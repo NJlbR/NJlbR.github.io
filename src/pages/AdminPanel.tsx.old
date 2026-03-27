@@ -1,0 +1,736 @@
+import { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
+import { Plus, Save, Trash2, CreditCard as EditIcon, Upload } from 'lucide-react';
+
+export function AdminPanel() {
+  const { user, signIn } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const [postTitle, setPostTitle] = useState('');
+  const [postType, setPostType] = useState<'text' | 'audio' | 'video'>('text');
+  const [postContent, setPostContent] = useState('');
+  const [postTranscript, setPostTranscript] = useState('');
+  const [postHashtags, setPostHashtags] = useState('');
+  const [postPersons, setPostPersons] = useState('');
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  const [existingPosts, setExistingPosts] = useState<any[]>([]);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+
+  const [activeTab, setActiveTab] = useState<'posts' | 'annotations'>('posts');
+
+  const [allAnnotations, setAllAnnotations] = useState<any[]>([]);
+  const [newAnnotationTerm, setNewAnnotationTerm] = useState('');
+  const [newAnnotationContent, setNewAnnotationContent] = useState('');
+  const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null);
+  const [editAnnotationTerm, setEditAnnotationTerm] = useState('');
+  const [editAnnotationContent, setEditAnnotationContent] = useState('');
+
+  useEffect(() => {
+    if (user) {
+      fetchPosts();
+      fetchAnnotations();
+    }
+  }, [user]);
+
+  async function fetchPosts() {
+    const { data } = await supabase
+      .from('posts')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (data) setExistingPosts(data);
+  }
+
+  async function fetchAnnotations() {
+    const { data } = await supabase
+      .from('annotations')
+      .select('*')
+      .order('term');
+    if (data) setAllAnnotations(data);
+  }
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      await signIn(email, password);
+    } catch (err: any) {
+      setError(err.message || 'Ошибка входа');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSavePost() {
+    if (!postTitle) {
+      alert('Введите название поста');
+      return;
+    }
+
+    if (postType === 'text' && !postContent) {
+      alert('Введите текст поста');
+      return;
+    }
+
+    if ((postType === 'audio' || postType === 'video') && !mediaFile && !postContent && !editingPostId) {
+      alert('Выберите файл для загрузки');
+      return;
+    }
+
+    setLoading(true);
+    setUploadProgress(0);
+
+    try {
+      let mediaUrl = postContent;
+
+      if (mediaFile && (postType === 'audio' || postType === 'video')) {
+        const fileExt = mediaFile.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const filePath = `${postType}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('media-files')
+          .upload(filePath, mediaFile);
+
+        if (uploadError) throw uploadError;
+
+        const { data: urlData } = supabase.storage
+          .from('media-files')
+          .getPublicUrl(filePath);
+
+        mediaUrl = urlData.publicUrl;
+        setUploadProgress(100);
+      }
+
+      let postId = editingPostId;
+
+      if (editingPostId) {
+        const { error } = await supabase
+          .from('posts')
+          .update({
+            title: postTitle,
+            content_type: postType,
+            content: mediaUrl,
+            transcript: postTranscript || null,
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq('id', editingPostId);
+
+        if (error) throw error;
+
+        await supabase.from('post_hashtags').delete().eq('post_id', editingPostId);
+        await supabase.from('post_persons').delete().eq('post_id', editingPostId);
+      } else {
+        const { data, error } = await supabase
+          .from('posts')
+          .insert({
+            title: postTitle,
+            content_type: postType,
+            content: postType === 'text' ? postContent : mediaUrl,
+            transcript: postTranscript || null,
+            author_id: user?.id,
+          } as any)
+          .select()
+          .single();
+
+        if (error) throw error;
+        postId = data?.id || null;
+      }
+
+      const hashtags = postHashtags.split(',').map(h => h.trim()).filter(Boolean);
+      for (const tagName of hashtags) {
+        let tagId = (await supabase.from('hashtags').select('id').eq('name', tagName).maybeSingle())?.data?.id;
+
+        if (!tagId) {
+          const { data: newTag } = await supabase.from('hashtags').insert({ name: tagName } as any).select().single();
+          tagId = newTag?.id;
+        }
+
+        if (tagId && postId) {
+          await supabase.from('post_hashtags').insert({ post_id: postId, hashtag_id: tagId } as any);
+        }
+      }
+
+      const persons = postPersons.split(',').map(p => p.trim()).filter(Boolean);
+      for (const personName of persons) {
+        let personId = (await supabase.from('persons').select('id').eq('name', personName).maybeSingle())?.data?.id;
+
+        if (!personId) {
+          const { data: newPerson } = await supabase.from('persons').insert({ name: personName } as any).select().single();
+          personId = newPerson?.id;
+        }
+
+        if (personId && postId) {
+          await supabase.from('post_persons').insert({ post_id: postId, person_id: personId } as any);
+        }
+      }
+
+      resetPostForm();
+      fetchPosts();
+      alert(editingPostId ? 'Пост обновлен!' : 'Пост создан!');
+    } catch (err: any) {
+      alert('Ошибка: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDeletePost(postId: string) {
+    if (!confirm('Удалить этот пост?')) return;
+
+    const { error } = await supabase.from('posts').delete().eq('id', postId);
+    if (error) {
+      alert('Ошибка удаления: ' + error.message);
+    } else {
+      fetchPosts();
+    }
+  }
+
+  async function handleEditPost(post: any) {
+    setEditingPostId(post.id);
+    setPostTitle(post.title);
+    setPostType(post.content_type);
+    setPostContent(post.content);
+    setPostTranscript(post.transcript || '');
+
+    const { data: hashtagsData } = await supabase
+      .from('post_hashtags')
+      .select('hashtags(name)')
+      .eq('post_id', post.id);
+    setPostHashtags(hashtagsData?.map((h: any) => h.hashtags.name).join(', ') || '');
+
+    const { data: personsData } = await supabase
+      .from('post_persons')
+      .select('persons(name)')
+      .eq('post_id', post.id);
+    setPostPersons(personsData?.map((p: any) => p.persons.name).join(', ') || '');
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function resetPostForm() {
+    setEditingPostId(null);
+    setPostTitle('');
+    setPostType('text');
+    setPostContent('');
+    setPostTranscript('');
+    setPostHashtags('');
+    setPostPersons('');
+    setMediaFile(null);
+    setUploadProgress(0);
+  }
+
+  async function handleCreateAnnotation() {
+    if (!newAnnotationTerm) {
+      alert('Введите термин');
+      return;
+    }
+
+    const { error } = await supabase.from('annotations').insert({
+      term: newAnnotationTerm,
+      content: newAnnotationContent,
+    } as any);
+
+    if (error) {
+      alert('Ошибка: ' + error.message);
+    } else {
+      setNewAnnotationTerm('');
+      setNewAnnotationContent('');
+      fetchAnnotations();
+      alert('Аннотация создана!');
+    }
+  }
+
+  async function handleEditAnnotation(annotation: any) {
+    setEditingAnnotationId(annotation.id);
+    setEditAnnotationTerm(annotation.term);
+    setEditAnnotationContent(annotation.content || '');
+  }
+
+  async function handleSaveAnnotation() {
+    if (!editAnnotationTerm) {
+      alert('Введите термин');
+      return;
+    }
+
+    const { error } = await supabase
+      .from('annotations')
+      .update({
+        term: editAnnotationTerm,
+        content: editAnnotationContent,
+        updated_at: new Date().toISOString(),
+      } as any)
+      .eq('id', editingAnnotationId!);
+
+    if (error) {
+      alert('Ошибка: ' + error.message);
+    } else {
+      setEditingAnnotationId(null);
+      setEditAnnotationTerm('');
+      setEditAnnotationContent('');
+      fetchAnnotations();
+      alert('Аннотация обновлена!');
+    }
+  }
+
+  async function handleDeleteAnnotation(annotationId: string) {
+    if (!confirm('Удалить эту аннотацию? Это также удалит все связи с постами.')) return;
+
+    const { error } = await supabase.from('annotations').delete().eq('id', annotationId);
+    if (error) {
+      alert('Ошибка удаления: ' + error.message);
+    } else {
+      fetchAnnotations();
+    }
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 px-4">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 sm:p-8 w-full max-w-md">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6 text-center">
+            Вход в админ-панель
+          </h1>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Пароль
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                required
+              />
+            </div>
+
+            {error && (
+              <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg transition-colors"
+            >
+              {loading ? 'Вход...' : 'Войти'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto px-4 py-8">
+      <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-6 sm:mb-8">
+        Админ-панель
+      </h1>
+
+      <div className="mb-6 flex gap-2 sm:gap-3 flex-wrap">
+        <button
+          onClick={() => setActiveTab('posts')}
+          className={`px-3 sm:px-4 py-2 rounded-lg transition-colors text-sm sm:text-base ${
+            activeTab === 'posts'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+          }`}
+        >
+          Управление постами
+        </button>
+        <button
+          onClick={() => setActiveTab('annotations')}
+          className={`px-3 sm:px-4 py-2 rounded-lg transition-colors text-sm sm:text-base ${
+            activeTab === 'annotations'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+          }`}
+        >
+          Управление аннотациями
+        </button>
+      </div>
+
+      {activeTab === 'posts' ? (
+        <>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-6 mb-6 sm:mb-8">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6">
+              {editingPostId ? 'Редактировать пост' : 'Создать новый пост'}
+            </h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Название
+                </label>
+                <input
+                  type="text"
+                  value={postTitle}
+                  onChange={(e) => setPostTitle(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Тип контента
+                </label>
+                <select
+                  value={postType}
+                  onChange={(e) => setPostType(e.target.value as any)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  <option value="text">Текст</option>
+                  <option value="audio">Аудио</option>
+                  <option value="video">Видео</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  {postType === 'text' ? 'Текст' : 'Файл (аудио/видео)'}
+                </label>
+                {postType === 'text' ? (
+                  <textarea
+                    value={postContent}
+                    onChange={(e) => setPostContent(e.target.value)}
+                    rows={8}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="Введите текст поста..."
+                  />
+                ) : (
+                  <div className="space-y-3">
+                    <label className="flex flex-col items-center justify-center w-full px-4 py-8 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                      <Upload className="w-10 h-10 mb-3 text-gray-400" />
+                      <span className="text-sm text-gray-600 dark:text-gray-400 text-center">
+                        {mediaFile ? 'Файл выбран, нажмите для замены' : 'Нажмите для выбора файла'}
+                      </span>
+                      <span className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                        {postType === 'audio' ? 'MP3, WAV, OGG, M4A' : 'MP4, WebM, OGG, MOV'}
+                      </span>
+                      <input
+                        type="file"
+                        accept={postType === 'audio' ? 'audio/*' : 'video/*'}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) setMediaFile(file);
+                        }}
+                        className="hidden"
+                      />
+                    </label>
+                    {mediaFile && (
+                      <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                        <p className="text-sm text-gray-700 dark:text-gray-300">
+                          <strong>Выбран:</strong> {mediaFile.name}
+                        </p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                          Размер: {(mediaFile.size / 1024 / 1024).toFixed(2)} МБ
+                        </p>
+                      </div>
+                    )}
+                    {editingPostId && postContent && !mediaFile && (
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Текущий файл уже загружен. Выберите новый файл, чтобы заменить его.
+                      </p>
+                    )}
+                    {uploadProgress > 0 && uploadProgress < 100 && (
+                      <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-3">
+                        <div
+                          className="bg-blue-600 h-3 rounded-full transition-all flex items-center justify-center text-xs text-white"
+                          style={{ width: `${uploadProgress}%` }}
+                        >
+                          {uploadProgress}%
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {postType !== 'text' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Текстовый пересказ
+                  </label>
+                  <textarea
+                    value={postTranscript}
+                    onChange={(e) => setPostTranscript(e.target.value)}
+                    rows={5}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="Введите текстовую расшифровку..."
+                  />
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    Аннотации будут автоматически найдены в тексте
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Хэштеги (через запятую)
+                </label>
+                <input
+                  type="text"
+                  value={postHashtags}
+                  onChange={(e) => setPostHashtags(e.target.value)}
+                  placeholder="наука, история, философия"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Персоны (через запятую)
+                </label>
+                <input
+                  type="text"
+                  value={postPersons}
+                  onChange={(e) => setPostPersons(e.target.value)}
+                  placeholder="Иван Иванов, Петр Петров"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+              </div>
+
+              {(postType === 'text' || postTranscript) && (
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    <strong>Автоматическая привязка аннотаций:</strong> Все термины из списка аннотаций будут автоматически найдены и связаны с постом. Создайте аннотации на вкладке "Управление аннотациями" перед публикацией поста.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-4 flex-wrap">
+                <button
+                  onClick={handleSavePost}
+                  disabled={loading}
+                  className="flex items-center gap-2 px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg transition-colors"
+                >
+                  <Save size={20} />
+                  {editingPostId ? 'Обновить' : 'Создать'}
+                </button>
+
+                {editingPostId && (
+                  <button
+                    onClick={resetPostForm}
+                    className="px-6 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors"
+                  >
+                    Отмена
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-6">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4">
+              Существующие посты
+            </h2>
+
+            <div className="space-y-3">
+              {existingPosts.map((post) => (
+                <div
+                  key={post.id}
+                  className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
+                >
+                  <div className="flex-1 min-w-0 mr-3">
+                    <h3 className="font-bold text-gray-900 dark:text-white truncate">
+                      {post.title}
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      {post.content_type} • {new Date(post.created_at).toLocaleDateString('ru-RU')}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => handleEditPost(post)}
+                      className="p-2 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg"
+                    >
+                      <EditIcon size={20} />
+                    </button>
+                    <button
+                      onClick={() => handleDeletePost(post.id)}
+                      className="p-2 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {existingPosts.length === 0 && (
+                <p className="text-gray-600 dark:text-gray-400 text-center py-4">
+                  Постов пока нет
+                </p>
+              )}
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="space-y-6 sm:space-y-8">
+          {editingAnnotationId ? (
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-6">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6">
+                Редактировать аннотацию
+              </h2>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Термин
+                  </label>
+                  <input
+                    type="text"
+                    value={editAnnotationTerm}
+                    onChange={(e) => setEditAnnotationTerm(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Описание
+                  </label>
+                  <textarea
+                    value={editAnnotationContent}
+                    onChange={(e) => setEditAnnotationContent(e.target.value)}
+                    rows={10}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                </div>
+
+                <div className="flex gap-3 flex-wrap">
+                  <button
+                    onClick={handleSaveAnnotation}
+                    className="flex items-center gap-2 px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                  >
+                    <Save size={20} />
+                    Сохранить
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingAnnotationId(null);
+                      setEditAnnotationTerm('');
+                      setEditAnnotationContent('');
+                    }}
+                    className="px-6 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors"
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-6">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6">
+                Создать новую аннотацию
+              </h2>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Термин
+                  </label>
+                  <input
+                    type="text"
+                    value={newAnnotationTerm}
+                    onChange={(e) => setNewAnnotationTerm(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="Введите термин..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Описание
+                  </label>
+                  <textarea
+                    value={newAnnotationContent}
+                    onChange={(e) => setNewAnnotationContent(e.target.value)}
+                    rows={6}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="Введите описание термина..."
+                  />
+                </div>
+
+                <button
+                  onClick={handleCreateAnnotation}
+                  className="flex items-center gap-2 px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                >
+                  <Plus size={20} />
+                  Создать аннотацию
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-6">
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mb-4">
+              Все аннотации ({allAnnotations.length})
+            </h3>
+
+            <div className="space-y-3">
+              {allAnnotations.map((ann) => (
+                <div
+                  key={ann.id}
+                  className="flex items-start justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
+                >
+                  <div className="flex-1 min-w-0 mr-3">
+                    <h4 className="font-bold text-gray-900 dark:text-white mb-1">
+                      {ann.term}
+                    </h4>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
+                      {ann.content || 'Описание не добавлено'}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => handleEditAnnotation(ann)}
+                      className="p-2 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg"
+                    >
+                      <EditIcon size={20} />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteAnnotation(ann.id)}
+                      className="p-2 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {allAnnotations.length === 0 && (
+                <p className="text-gray-600 dark:text-gray-400 text-center py-4">
+                  Аннотаций пока нет
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

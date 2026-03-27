@@ -1,0 +1,180 @@
+import { useState, useEffect } from 'react';
+import { Calendar, Hash, User, ChevronDown, ChevronUp, Music, Video } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { AnnotationPopup } from './AnnotationPopup';
+import { MediaPlayer } from './MediaPlayer';
+import { detectAnnotations, AnnotationMatch } from '../utils/annotationDetection';
+import type { Database } from '../lib/database.types';
+
+type Post = Database['public']['Tables']['posts']['Row'];
+type Annotation = Database['public']['Tables']['annotations']['Row'];
+type PostAnnotation = Database['public']['Tables']['post_annotations']['Row'];
+
+interface PostWithRelations extends Post {
+  hashtags?: { name: string }[];
+  persons?: { name: string }[];
+  post_annotations?: (PostAnnotation & { annotations: Annotation })[];
+}
+
+interface PostCardProps {
+  post: PostWithRelations;
+}
+
+export function PostCard({ post }: PostCardProps) {
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+  const [showTranscript, setShowTranscript] = useState(false);
+  const [annotatedContent, setAnnotatedContent] = useState<React.ReactNode[]>([]);
+  const [annotatedTranscript, setAnnotatedTranscript] = useState<React.ReactNode[]>([]);
+  const [allAnnotations, setAllAnnotations] = useState<{ id: string; term: string }[]>([]);
+
+  useEffect(() => {
+    async function fetchAllAnnotations() {
+      const { data } = await supabase
+        .from('annotations')
+        .select('id, term')
+        .order('term');
+
+      if (data) {
+        setAllAnnotations(data);
+      }
+    }
+
+    fetchAllAnnotations();
+  }, []);
+
+  useEffect(() => {
+    if (allAnnotations.length === 0) return;
+
+    if (post.content_type === 'text') {
+      const matches = detectAnnotations(post.content, allAnnotations);
+      const content = renderAnnotatedText(post.content, matches);
+      setAnnotatedContent(content);
+    }
+
+    if (post.transcript) {
+      const matches = detectAnnotations(post.transcript, allAnnotations);
+      const content = renderAnnotatedText(post.transcript, matches);
+      setAnnotatedTranscript(content);
+    }
+  }, [post, allAnnotations]);
+
+  function renderAnnotatedText(text: string, matches: AnnotationMatch[]): React.ReactNode[] {
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+
+    matches.forEach((match, idx) => {
+      if (lastIndex < match.start) {
+        parts.push(text.slice(lastIndex, match.start));
+      }
+
+      const annotatedText = text.slice(match.start, match.end);
+      parts.push(
+        <button
+          key={`annotation-${idx}`}
+          onClick={() => setSelectedAnnotationId(match.annotationId)}
+          className="annotation-highlight bg-yellow-200 dark:bg-yellow-600 hover:bg-yellow-300 dark:hover:bg-yellow-500 cursor-pointer rounded px-1 transition-colors"
+        >
+          {annotatedText}
+        </button>
+      );
+
+      lastIndex = match.end;
+    });
+
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex));
+    }
+
+    return parts;
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-6 mb-4 sm:mb-6 transition-colors">
+      <div className="flex items-start justify-between mb-4">
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mr-3">
+          {post.title}
+        </h2>
+        {post.content_type === 'audio' && (
+          <Music className="text-blue-500 flex-shrink-0" size={20} />
+        )}
+        {post.content_type === 'video' && (
+          <Video className="text-purple-500 flex-shrink-0" size={20} />
+        )}
+      </div>
+
+      {post.content_type === 'text' ? (
+        <div className="prose dark:prose-invert max-w-none mb-4">
+          <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+            {annotatedContent}
+          </p>
+        </div>
+      ) : (
+        <div className="mb-4">
+          <MediaPlayer src={post.content} type={post.content_type} />
+
+          {post.transcript && (
+            <div className="mt-4">
+              <button
+                onClick={() => setShowTranscript(!showTranscript)}
+                className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 mb-2"
+              >
+                {showTranscript ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                <span className="font-medium">Текстовый пересказ</span>
+              </button>
+
+              {showTranscript && (
+                <div className="prose dark:prose-invert max-w-none mt-3 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                  <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                    {annotatedTranscript}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-3 sm:gap-4 text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+        <div className="flex items-center gap-1">
+          <Calendar size={14} className="sm:w-4 sm:h-4 flex-shrink-0" />
+          <span>{new Date(post.created_at).toLocaleDateString('ru-RU')}</span>
+        </div>
+
+        {post.hashtags && post.hashtags.length > 0 && (
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            <Hash size={14} className="sm:w-4 sm:h-4 flex-shrink-0" />
+            {post.hashtags.map((tag, idx) => (
+              <span
+                key={idx}
+                className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-0.5 sm:py-1 rounded-full text-xs"
+              >
+                #{tag.name}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {post.persons && post.persons.length > 0 && (
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            <User size={14} className="sm:w-4 sm:h-4 flex-shrink-0" />
+            {post.persons.map((person, idx) => (
+              <span
+                key={idx}
+                className="bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-0.5 sm:py-1 rounded-full text-xs"
+              >
+                {person.name}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {selectedAnnotationId && (
+        <AnnotationPopup
+          annotationId={selectedAnnotationId}
+          onClose={() => setSelectedAnnotationId(null)}
+        />
+      )}
+    </div>
+  );
+}
