@@ -18,6 +18,7 @@ interface GroupsListProps {
   onJoinGroup: () => void;
   onNavigateAuth: () => void;
   onGroupJoined: (groupId: string) => void;
+  refreshKey?: number;
 }
 
 export function GroupsList({
@@ -28,6 +29,7 @@ export function GroupsList({
   onJoinGroup,
   onNavigateAuth,
   onGroupJoined,
+  refreshKey = 0,
 }: GroupsListProps) {
   const { user, profile } = useAuth();
   const [groups, setGroups] = useState<Group[]>([]);
@@ -40,6 +42,10 @@ export function GroupsList({
     const cleanup = subscribeToMessages();
     return cleanup;
   }, [user?.id]);
+
+  useEffect(() => {
+    void fetchGroups();
+  }, [refreshKey]);
 
   async function fetchGroups() {
     setLoading(true);
@@ -292,3 +298,4 @@ export function GroupsList({
     </div>
   );
 }
+
