@@ -491,6 +491,7 @@ export interface Database {
           content: string | null
           media_urls: Json
           like_count: number
+          view_count: number
           created_at: string
           updated_at: string
         }
@@ -501,6 +502,7 @@ export interface Database {
           content?: string | null
           media_urls?: Json
           like_count?: number
+          view_count?: number
           created_at?: string
           updated_at?: string
         }
@@ -511,6 +513,7 @@ export interface Database {
           content?: string | null
           media_urls?: Json
           like_count?: number
+          view_count?: number
           created_at?: string
           updated_at?: string
         }
@@ -582,6 +585,234 @@ export interface Database {
           message_id?: string
           user_id?: string
           created_at?: string
+        }
+        Relationships: []
+      }
+      channel_post_likes: {
+        Row: {
+          id: string
+          post_id: string
+          user_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          post_id: string
+          user_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          post_id?: string
+          user_id?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      channel_post_views: {
+        Row: {
+          id: string
+          post_id: string
+          viewer_id: string | null
+          viewed_at: string
+        }
+        Insert: {
+          id?: string
+          post_id: string
+          viewer_id?: string | null
+          viewed_at?: string
+        }
+        Update: {
+          id?: string
+          post_id?: string
+          viewer_id?: string | null
+          viewed_at?: string
+        }
+        Relationships: []
+      }
+      channel_post_comments: {
+        Row: {
+          id: string
+          post_id: string
+          user_id: string
+          content: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          post_id: string
+          user_id: string
+          content: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          post_id?: string
+          user_id?: string
+          content?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      channel_post_comment_reads: {
+        Row: {
+          id: string
+          post_id: string
+          user_id: string
+          last_read_at: string
+        }
+        Insert: {
+          id?: string
+          post_id: string
+          user_id: string
+          last_read_at?: string
+        }
+        Update: {
+          id?: string
+          post_id?: string
+          user_id?: string
+          last_read_at?: string
+        }
+        Relationships: []
+      }
+      channels: {
+        Row: {
+          id: string
+          name: string
+          username: string
+          description: string | null
+          invite_code: string | null
+          created_by: string
+          created_at: string
+          updated_at: string
+          is_public: boolean
+        }
+        Insert: {
+          id?: string
+          name: string
+          username: string
+          description?: string | null
+          invite_code?: string | null
+          created_by: string
+          created_at?: string
+          updated_at?: string
+          is_public?: boolean
+        }
+        Update: {
+          id?: string
+          name?: string
+          username?: string
+          description?: string | null
+          invite_code?: string | null
+          created_by?: string
+          created_at?: string
+          updated_at?: string
+          is_public?: boolean
+        }
+        Relationships: []
+      }
+      channel_admins: {
+        Row: {
+          id: string
+          channel_id: string
+          user_id: string
+          can_post: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          channel_id: string
+          user_id: string
+          can_post?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          channel_id?: string
+          user_id?: string
+          can_post?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
+      channel_subscribers: {
+        Row: {
+          id: string
+          channel_id: string
+          user_id: string
+          subscribed_at: string
+        }
+        Insert: {
+          id?: string
+          channel_id: string
+          user_id: string
+          subscribed_at?: string
+        }
+        Update: {
+          id?: string
+          channel_id?: string
+          user_id?: string
+          subscribed_at?: string
+        }
+        Relationships: []
+      }
+      channel_posts: {
+        Row: {
+          id: string
+          channel_id: string
+          author_id: string
+          content: string | null
+          media_urls: Json
+          view_count: number
+          like_count: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          channel_id: string
+          author_id: string
+          content?: string | null
+          media_urls?: Json
+          view_count?: number
+          like_count?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          channel_id?: string
+          author_id?: string
+          content?: string | null
+          media_urls?: Json
+          view_count?: number
+          like_count?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      group_message_views: {
+        Row: {
+          id: string
+          message_id: string
+          viewer_id: string | null
+          viewed_at: string
+        }
+        Insert: {
+          id?: string
+          message_id: string
+          viewer_id?: string | null
+          viewed_at?: string
+        }
+        Update: {
+          id?: string
+          message_id?: string
+          viewer_id?: string | null
+          viewed_at?: string
         }
         Relationships: []
       }
@@ -772,6 +1003,12 @@ export interface Database {
           liked: boolean
           like_count: number
         }
+      }
+      increment_group_message_views: {
+        Args: {
+          message_id_param: string
+        }
+        Returns: Json
       }
     }
     Enums: {
