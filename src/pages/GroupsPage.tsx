@@ -6,6 +6,7 @@ import { CreateGroupModal } from '../components/groups/CreateGroupModal';
 import { JoinGroupModal } from '../components/groups/JoinGroupModal';
 import { GroupInfo } from '../components/groups/GroupInfo';
 import { GroupPreviewPanel } from '../components/groups/GroupPreviewPanel';
+import type { Database } from '../lib/database.types';
 
 interface GroupsPageProps {
   onNavigateAuth: () => void;
@@ -21,6 +22,7 @@ export function GroupsPage({ onNavigateAuth, initialInviteCode = null }: GroupsP
   const [showJoinGroup, setShowJoinGroup] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [createdGroup, setCreatedGroup] = useState<Database['public']['Tables']['groups']['Row'] | null>(null);
 
   useEffect(() => {
     setSelectedGroupId(null);
@@ -71,6 +73,7 @@ export function GroupsPage({ onNavigateAuth, initialInviteCode = null }: GroupsP
           onPreviewGroup={openPreview}
           selectedGroupId={selectedGroupId}
           refreshKey={refreshKey}
+          createdGroup={createdGroup}
           onNewGroup={() => {
             if (canCreateGroup) {
               setShowCreateGroup(true);
@@ -119,10 +122,11 @@ export function GroupsPage({ onNavigateAuth, initialInviteCode = null }: GroupsP
       {showCreateGroup && canCreateGroup && (
         <CreateGroupModal
           onClose={() => setShowCreateGroup(false)}
-          onGroupCreated={(groupId) => {
+          onGroupCreated={(group) => {
             setShowCreateGroup(false);
+            setCreatedGroup(group);
             setRefreshKey((prev) => prev + 1);
-            openChat(groupId);
+            openChat(group.id);
           }}
         />
       )}
@@ -152,4 +156,5 @@ export function GroupsPage({ onNavigateAuth, initialInviteCode = null }: GroupsP
     </div>
   );
 }
+
 
