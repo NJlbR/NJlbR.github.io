@@ -19,6 +19,7 @@ interface GroupsListProps {
   onNavigateAuth: () => void;
   onGroupJoined: (groupId: string) => void;
   refreshKey?: number;
+  createdGroup?: Group | null;
 }
 
 export function GroupsList({
@@ -30,6 +31,7 @@ export function GroupsList({
   onNavigateAuth,
   onGroupJoined,
   refreshKey = 0,
+  createdGroup = null,
 }: GroupsListProps) {
   const { user, profile } = useAuth();
   const [groups, setGroups] = useState<Group[]>([]);
@@ -107,7 +109,11 @@ export function GroupsList({
     };
   }
 
-  const filteredGroups = groups.filter((group) => {
+  const mergedGroups = createdGroup && !groups.some((group) => group.id === createdGroup.id)
+    ? [createdGroup, ...groups]
+    : groups;
+
+  const filteredGroups = mergedGroups.filter((group) => {
     const name = group.name.toLowerCase();
     return name.includes(searchQuery.toLowerCase());
   });
@@ -298,4 +304,5 @@ export function GroupsList({
     </div>
   );
 }
+
 
