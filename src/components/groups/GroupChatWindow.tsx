@@ -34,6 +34,7 @@ export function GroupChatWindow({ groupId, onBack, onShowInfo }: GroupChatWindow
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const viewedMessageIdsRef = useRef<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -91,10 +92,70 @@ export function GroupChatWindow({ groupId, onBack, onShowInfo }: GroupChatWindow
       .order('created_at', { ascending: true });
 
     if (data) {
-      setMessages(data as any);
+      setMessages((prev) => {
+        const prevViews = new Map(prev.map((message) => [message.id, message.view_count]));
+        return (data as any).map((message: any) => {
+          const existingView = prevViews.get(message.id);
+          return {
+            ...message,
+            view_count: typeof message.view_count === 'number'
+              ? message.view_count
+              : typeof existingView === 'number'
+                ? existingView
+                : message.view_count,
+          };
+        });
+      });
+      await incrementViews(data as any);
     }
 
     setLoading(false);
+  }
+
+  async function incrementViews(data: GroupMessage[]) {
+    const updates = new Map<string, number>();
+
+    for (const message of data) {
+      if (viewedMessageIdsRef.current.has(message.id)) continue;
+      viewedMessageIdsRef.current.add(message.id);
+
+      const { data: viewData, error: viewError } = await supabase.rpc('increment_group_message_views', {
+        message_id_param: message.id,
+      } as any);
+
+      if (!viewError) {
+        const rawViewCount = (viewData as any)?.view_count;
+        const viewCount = typeof rawViewCount === 'number'
+          ? rawViewCount
+          : typeof rawViewCount === 'string'
+            ? Number(rawViewCount)
+            : null;
+
+        if (typeof viewCount === 'number' && !Number.isNaN(viewCount)) {
+          updates.set(message.id, viewCount);
+          continue;
+        }
+      }
+
+      const { count } = await supabase
+        .from('group_message_views')
+        .select('id', { count: 'exact', head: true })
+        .eq('message_id', message.id);
+
+      if (typeof count === 'number') {
+        updates.set(message.id, count);
+      }
+    }
+
+    if (updates.size > 0) {
+      setMessages((prev) =>
+        prev.map((message) =>
+          updates.has(message.id)
+            ? { ...message, view_count: updates.get(message.id) as number }
+            : message
+        )
+      );
+    }
   }
 
   function subscribeToMessages() {
@@ -117,7 +178,44 @@ export function GroupChatWindow({ groupId, onBack, onShowInfo }: GroupChatWindow
             .eq('id', newMsg.sender_id)
             .maybeSingle();
 
-          setMessages((prev) => [...prev, { ...newMsg, user_profiles: profileData || undefined }]);
+          const { data: viewData, error: viewError } = await supabase.rpc('increment_group_message_views', {
+            message_id_param: newMsg.id,
+          } as any);
+
+          if (!viewedMessageIdsRef.current.has(newMsg.id)) {
+            viewedMessageIdsRef.current.add(newMsg.id);
+          }
+
+          let viewCount: number | null = null;
+
+          if (!viewError) {
+            const rawViewCount = (viewData as any)?.view_count;
+            viewCount = typeof rawViewCount === 'number'
+              ? rawViewCount
+              : typeof rawViewCount === 'string'
+                ? Number(rawViewCount)
+                : null;
+          }
+
+          if (viewCount === null || Number.isNaN(viewCount)) {
+            const { count } = await supabase
+              .from('group_message_views')
+              .select('id', { count: 'exact', head: true })
+              .eq('message_id', newMsg.id);
+
+            if (typeof count === 'number') {
+              viewCount = count;
+            }
+          }
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              ...newMsg,
+              view_count: typeof viewCount === 'number' ? viewCount : newMsg.view_count,
+              user_profiles: profileData || undefined,
+            },
+          ]);
         }
       )
       .on(
@@ -323,6 +421,8 @@ export function GroupChatWindow({ groupId, onBack, onShowInfo }: GroupChatWindow
               key={message.id}
               message={message}
               isOwn={message.sender_id === user?.id}
+              groupId={groupId}
+              canModerate={canModerate}
             />
           ))
         )}
@@ -408,3 +508,4 @@ export function GroupChatWindow({ groupId, onBack, onShowInfo }: GroupChatWindow
     </div>
   );
 }
+
