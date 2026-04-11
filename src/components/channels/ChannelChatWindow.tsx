@@ -96,7 +96,20 @@ export function ChannelChatWindow({ channelId, onBack, onShowInfo }: ChannelChat
       .order('created_at', { ascending: true });
 
     if (data) {
-      setPosts(data as any);
+      setPosts((prev) => {
+        const prevViews = new Map(prev.map((post) => [post.id, (post as any).view_count]));
+        return (data as any).map((post: any) => {
+          const existingView = prevViews.get(post.id);
+          return {
+            ...post,
+            view_count: typeof post.view_count === 'number'
+              ? post.view_count
+              : typeof existingView === 'number'
+                ? existingView
+                : post.view_count,
+          };
+        });
+      });
       await incrementViews(data as any);
     }
 
@@ -114,8 +127,14 @@ export function ChannelChatWindow({ channelId, onBack, onShowInfo }: ChannelChat
         post_id_param: post.id,
       });
 
-      const viewCount = (viewData as any)?.view_count;
-      if (typeof viewCount === 'number') {
+      const rawViewCount = (viewData as any)?.view_count;
+      const viewCount = typeof rawViewCount === 'number'
+        ? rawViewCount
+        : typeof rawViewCount === 'string'
+          ? Number(rawViewCount)
+          : null;
+
+      if (typeof viewCount === 'number' && !Number.isNaN(viewCount)) {
         updates.set(post.id, viewCount);
       }
     }
@@ -224,7 +243,7 @@ export function ChannelChatWindow({ channelId, onBack, onShowInfo }: ChannelChat
   const isUserChannelCreator = channelData?.created_by === user?.id;
   const userLikedPost = (postId: string) => {
     const post = posts.find((p) => p.id === postId);
-    return post?.channel_post_likes?.some((like: any) => like.id !== user?.id);
+    return post?.channel_post_likes?.some((like: any) => like.id === user?.id);
   };
 
   return (
