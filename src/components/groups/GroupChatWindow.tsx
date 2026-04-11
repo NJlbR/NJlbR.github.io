@@ -62,6 +62,15 @@ export function GroupChatWindow({ groupId, onBack, onShowInfo }: GroupChatWindow
     }
 
     if (user) {
+      const isCreator = data?.created_by === user.id;
+
+      if (isCreator) {
+        await supabase.rpc('ensure_group_creator_membership_for_group' as any, {
+          target_group_id: groupId,
+          creator_id: user.id,
+        });
+      }
+
       const { data: memberData } = await supabase
         .from('group_members')
         .select('is_admin, is_moderator')
@@ -70,7 +79,6 @@ export function GroupChatWindow({ groupId, onBack, onShowInfo }: GroupChatWindow
         .maybeSingle();
 
       if (memberData) {
-        const isCreator = data?.created_by === user.id;
         setCanModerate(isCreator || memberData.is_admin || memberData.is_moderator);
       }
     }
@@ -508,4 +516,5 @@ export function GroupChatWindow({ groupId, onBack, onShowInfo }: GroupChatWindow
     </div>
   );
 }
+
 
