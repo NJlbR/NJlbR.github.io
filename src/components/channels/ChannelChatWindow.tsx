@@ -123,19 +123,31 @@ export function ChannelChatWindow({ channelId, onBack, onShowInfo }: ChannelChat
       if (viewedPostIdsRef.current.has(post.id)) continue;
       viewedPostIdsRef.current.add(post.id);
 
-      const { data: viewData } = await supabase.rpc('increment_channel_post_views', {
+      const { data: viewData, error: viewError } = await supabase.rpc('increment_channel_post_views', {
         post_id_param: post.id,
       });
 
-      const rawViewCount = (viewData as any)?.view_count;
-      const viewCount = typeof rawViewCount === 'number'
-        ? rawViewCount
-        : typeof rawViewCount === 'string'
-          ? Number(rawViewCount)
-          : null;
+      if (!viewError) {
+        const rawViewCount = (viewData as any)?.view_count;
+        const viewCount = typeof rawViewCount === 'number'
+          ? rawViewCount
+          : typeof rawViewCount === 'string'
+            ? Number(rawViewCount)
+            : null;
 
-      if (typeof viewCount === 'number' && !Number.isNaN(viewCount)) {
-        updates.set(post.id, viewCount);
+        if (typeof viewCount === 'number' && !Number.isNaN(viewCount)) {
+          updates.set(post.id, viewCount);
+          continue;
+        }
+      }
+
+      const { count } = await supabase
+        .from('channel_post_views')
+        .select('id', { count: 'exact', head: true })
+        .eq('post_id', post.id);
+
+      if (typeof count === 'number') {
+        updates.set(post.id, count);
       }
     }
 
