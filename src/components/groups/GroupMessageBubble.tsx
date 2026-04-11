@@ -18,9 +18,10 @@ interface GroupMessageBubbleProps {
   groupId: string;
   canModerate?: boolean;
   onDelete?: () => void;
+  onLikeChange?: (messageId: string, liked: boolean, likeCount: number) => void;
 }
 
-export function GroupMessageBubble({ message, isOwn, groupId, canModerate, onDelete }: GroupMessageBubbleProps) {
+export function GroupMessageBubble({ message, isOwn, groupId, canModerate, onDelete, onLikeChange }: GroupMessageBubbleProps) {
   const { user } = useAuth();
   const [likeCount, setLikeCount] = useState(message.like_count || 0);
   const [viewCount, setViewCount] = useState(message.view_count || 0);
@@ -71,6 +72,7 @@ export function GroupMessageBubble({ message, isOwn, groupId, canModerate, onDel
       if (data) {
         setIsLiked(data.liked);
         setLikeCount(data.like_count || 0);
+        onLikeChange?.(message.id, data.liked, data.like_count || 0);
       }
     } catch (err: any) {
       console.error('Error toggling like:', err);
