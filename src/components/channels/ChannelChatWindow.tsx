@@ -104,12 +104,30 @@ export function ChannelChatWindow({ channelId, onBack, onShowInfo }: ChannelChat
   }
 
   async function incrementViews(data: ChannelPost[]) {
+    const updates = new Map<string, number>();
+
     for (const post of data) {
       if (viewedPostIdsRef.current.has(post.id)) continue;
       viewedPostIdsRef.current.add(post.id);
-      await supabase.rpc('increment_channel_post_views', {
+
+      const { data: viewData } = await supabase.rpc('increment_channel_post_views', {
         post_id_param: post.id,
       });
+
+      const viewCount = (viewData as any)?.view_count;
+      if (typeof viewCount === 'number') {
+        updates.set(post.id, viewCount);
+      }
+    }
+
+    if (updates.size > 0) {
+      setPosts((prev) =>
+        prev.map((post) =>
+          updates.has(post.id)
+            ? { ...post, view_count: updates.get(post.id) as number }
+            : post
+        )
+      );
     }
   }
 
@@ -206,7 +224,7 @@ export function ChannelChatWindow({ channelId, onBack, onShowInfo }: ChannelChat
   const isUserChannelCreator = channelData?.created_by === user?.id;
   const userLikedPost = (postId: string) => {
     const post = posts.find((p) => p.id === postId);
-    return post?.channel_post_likes?.some((like: any) => like.id === user?.id);
+    return post?.channel_post_likes?.some((like: any) => like.id !== user?.id);
   };
 
   return (
