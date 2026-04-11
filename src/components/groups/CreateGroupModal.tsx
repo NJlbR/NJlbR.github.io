@@ -52,19 +52,6 @@ export function CreateGroupModal({ onClose, onGroupCreated }: CreateGroupModalPr
 
       if (groupError) throw groupError;
 
-      const { error: memberError } = await supabase
-        .from('group_members')
-        .upsert(
-          {
-            group_id: newGroup.id,
-            user_id: user.id,
-            is_admin: true,
-          },
-          { onConflict: 'group_id,user_id' }
-        );
-
-      if (memberError) throw memberError;
-
       onGroupCreated(newGroup as GroupRow);
       onClose();
     } catch (err: any) {
@@ -173,4 +160,5 @@ export function CreateGroupModal({ onClose, onGroupCreated }: CreateGroupModalPr
     </div>
   );
 }
+
 
