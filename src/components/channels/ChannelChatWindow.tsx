@@ -11,7 +11,7 @@ type ChannelPost = Database['public']['Tables']['channel_posts']['Row'] & {
     username: string;
     avatar_url?: string;
   };
-  channel_post_likes?: { id: string }[];
+  channel_post_likes?: { user_id: string }[];
 };
 
 interface ChannelChatWindowProps {
@@ -89,7 +89,7 @@ export function ChannelChatWindow({ channelId, onBack, onShowInfo }: ChannelChat
           avatar_url
         ),
         channel_post_likes (
-          id
+          user_id
         )
       `)
       .eq('channel_id', channelId)
@@ -201,9 +201,9 @@ export function ChannelChatWindow({ channelId, onBack, onShowInfo }: ChannelChat
                 ...post,
                 like_count: data.like_count,
                 channel_post_likes: data.liked
-                  ? [...(post.channel_post_likes || []), { id: user?.id }]
+                  ? [...(post.channel_post_likes || []), { user_id: user?.id }]
                   : (post.channel_post_likes || []).filter(
-                      (like: any) => like.id !== user?.id
+                      (like: any) => like.user_id !== user?.id
                     ),
               }
             : post
@@ -243,7 +243,7 @@ export function ChannelChatWindow({ channelId, onBack, onShowInfo }: ChannelChat
   const isUserChannelCreator = channelData?.created_by === user?.id;
   const userLikedPost = (postId: string) => {
     const post = posts.find((p) => p.id === postId);
-    return post?.channel_post_likes?.some((like: any) => like.id === user?.id);
+    return post?.channel_post_likes?.some((like: any) => like.user_id === user?.id);
   };
 
   return (
