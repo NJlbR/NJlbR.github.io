@@ -2,11 +2,14 @@ import { useState } from 'react';
 import { X, Users } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import type { Database } from '../../lib/database.types';
 
 interface CreateGroupModalProps {
   onClose: () => void;
-  onGroupCreated: (groupId: string) => void;
+  onGroupCreated: (group: GroupRow) => void;
 }
+
+type GroupRow = Database['public']['Tables']['groups']['Row'];
 
 export function CreateGroupModal({ onClose, onGroupCreated }: CreateGroupModalProps) {
   const { user } = useAuth();
@@ -59,7 +62,7 @@ export function CreateGroupModal({ onClose, onGroupCreated }: CreateGroupModalPr
 
       if (memberError) throw memberError;
 
-      onGroupCreated(newGroup.id);
+      onGroupCreated(newGroup as GroupRow);
       onClose();
     } catch (err: any) {
       alert('Ошибка создания группы: ' + err.message);
@@ -167,3 +170,4 @@ export function CreateGroupModal({ onClose, onGroupCreated }: CreateGroupModalPr
     </div>
   );
 }
+
