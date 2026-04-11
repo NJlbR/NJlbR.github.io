@@ -63,7 +63,7 @@ export function GroupMessageBubble({ message, isOwn, groupId, canModerate, onDel
 
     try {
       const { data, error } = await supabase.rpc('toggle_group_message_like', {
-        target_message_id: message.id,
+        message_id_param: message.id,
         user_id_param: user.id,
       } as any);
 
@@ -193,7 +193,16 @@ export function GroupMessageBubble({ message, isOwn, groupId, canModerate, onDel
                   } disabled:opacity-50`}
                   title={isLiked ? 'Убрать лайк' : 'Поставить лайк'}
                 >
-                  <Heart size={12} className={`sm:w-[14px] sm:h-[14px] ${isLiked ? 'fill-current' : ''}`} />
+                  <Heart
+                    size={12}
+                    className={`sm:w-[14px] sm:h-[14px] ${
+                      isLiked
+                        ? isOwn
+                          ? 'fill-red-200 text-red-200'
+                          : 'fill-red-500 text-red-500 dark:fill-red-400 dark:text-red-400'
+                        : ''
+                    }`}
+                  />
                   <span>{likeCount}</span>
                 </button>
               )}
@@ -219,4 +228,3 @@ export function GroupMessageBubble({ message, isOwn, groupId, canModerate, onDel
     </div>
   );
 }
-
