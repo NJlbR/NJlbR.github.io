@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Heart, Trash2 } from 'lucide-react';
+import { Heart, Trash2, Eye } from 'lucide-react';
 import { MediaContent } from '../MediaContent';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -23,6 +23,7 @@ interface GroupMessageBubbleProps {
 export function GroupMessageBubble({ message, isOwn, groupId, canModerate, onDelete }: GroupMessageBubbleProps) {
   const { user } = useAuth();
   const [likeCount, setLikeCount] = useState(message.like_count || 0);
+  const [viewCount, setViewCount] = useState(message.view_count || 0);
   const [isLiked, setIsLiked] = useState(false);
   const [isLiking, setIsLiking] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -32,6 +33,14 @@ export function GroupMessageBubble({ message, isOwn, groupId, canModerate, onDel
       checkIfLiked();
     }
   }, [user, message.id]);
+
+  useEffect(() => {
+    setViewCount(message.view_count || 0);
+  }, [message.view_count]);
+
+  useEffect(() => {
+    setLikeCount(message.like_count || 0);
+  }, [message.like_count]);
 
   async function checkIfLiked() {
     if (!user) return;
@@ -162,7 +171,11 @@ export function GroupMessageBubble({ message, isOwn, groupId, canModerate, onDel
           )}
 
           <div className={`flex items-center justify-between gap-2 mt-1 text-xs ${isOwn ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'}`}>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <Eye size={12} className="sm:w-[14px] sm:h-[14px]" />
+                <span>{viewCount}</span>
+              </div>
               {user && (
                 <button
                   onClick={handleLike}
