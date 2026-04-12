@@ -143,16 +143,21 @@ export function GroupsList({
     : groups;
 
   const filteredGroups = mergedGroups.filter((group) => {
-    const name = group.name.toLowerCase();
-    return name.includes(searchQuery.toLowerCase());
+    const query = searchQuery.toLowerCase();
+    const nameMatch = group.name.toLowerCase().includes(query);
+    const usernameMatch = ((group as any).username || '').toLowerCase().includes(query);
+    return nameMatch || usernameMatch;
   });
 
   const myGroups = filteredGroups.filter((group) => group.is_member);
   const publicSearchResults = publicGroups
     .filter((group) => !group.is_member && group.is_public)
-    .filter((group) =>
-    group.name.toLowerCase().includes(publicSearchQuery.toLowerCase())
-  );
+    .filter((group) => {
+      const query = publicSearchQuery.toLowerCase();
+      const nameMatch = group.name.toLowerCase().includes(query);
+      const usernameMatch = ((group as any).username || '').toLowerCase().includes(query);
+      return nameMatch || usernameMatch;
+    });
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
@@ -200,6 +205,18 @@ export function GroupsList({
         return;
       }
 
+      setGroups((prev) => {
+        const has = prev.some((group) => group.id === result.group_id);
+        if (has) {
+          return prev.map((group) =>
+            group.id === result.group_id ? { ...group, is_member: true } : group
+          );
+        }
+        const fromPublic = publicGroups.find((group) => group.id === result.group_id);
+        return fromPublic
+          ? [{ ...fromPublic, is_member: true }, ...prev]
+          : prev;
+      });
       await fetchGroups();
       onGroupJoined(result.group_id);
     } catch (err: any) {
@@ -227,7 +244,7 @@ export function GroupsList({
               onClick={() => setShowNameSearch(true)}
               className="px-3 py-2 text-sm font-medium rounded-lg bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             >
-              По названию
+              По названию/юзернейму
             </button>
             {user && profile?.approval_status === 'approved' && (
               <button
@@ -308,6 +325,7 @@ export function GroupsList({
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
                           {group.is_public ? 'Открытая группа' : 'Закрытая группа'}
+                          {(group as any).username && group.is_public ? ` • @${(group as any).username}` : ''}
                         </p>
                         <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
                           {group.members_count || 0} участн.
@@ -345,7 +363,7 @@ export function GroupsList({
                   type="text"
                   value={publicSearchQuery}
                   onChange={(e) => setPublicSearchQuery(e.target.value)}
-                  placeholder="Поиск открытых групп..."
+                  placeholder="Поиск открытых групп по названию или юзернейму..."
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
                 />
               </div>
@@ -367,6 +385,7 @@ export function GroupsList({
                         </div>
                         <div className="text-xs text-gray-500 dark:text-gray-400">
                           {group.members_count || 0} участн.
+                          {(group as any).username ? ` • @${(group as any).username}` : ''}
                         </div>
                       </div>
                       <button
