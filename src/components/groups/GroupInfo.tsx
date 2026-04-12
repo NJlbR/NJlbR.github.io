@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Copy, Check, Users as UsersIcon, LogOut, Trash2, Shield, ShieldOff, UserX, UserCheck, Ban, Globe, Lock } from 'lucide-react';
+import { X, Copy, Check, Users as UsersIcon, LogOut, Trash2, Shield, ShieldOff, UserX, UserCheck, Ban, Globe, Lock, RefreshCcw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -108,6 +108,31 @@ export function GroupInfo({ groupId, onClose, onLeaveGroup }: GroupInfoProps) {
       navigator.clipboard.writeText(`${window.location.origin}/?group=${groupData.invite_code}`);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleRefreshInviteCode = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase.rpc('regenerate_group_invite_code', {
+        target_group_id: groupId,
+        actor_user_id: user.id,
+      } as any);
+
+      if (error) throw error;
+
+      const result = data as { success: boolean; invite_code?: string; error?: string };
+
+      if (!result.success || !result.invite_code) {
+        alert(result.error || 'Не удалось обновить код');
+        return;
+      }
+
+      setGroupData((prev: any) => ({ ...prev, invite_code: result.invite_code }));
+      setCopied(false);
+    } catch (err: any) {
+      alert(err.message || 'Не удалось обновить код');
     }
   };
 
@@ -279,10 +304,52 @@ export function GroupInfo({ groupId, onClose, onLeaveGroup }: GroupInfoProps) {
     setUpdatingType(true);
 
     try {
+      let nextUsername = groupData.username ?? null;
+      let nextInviteCode = groupData.invite_code ?? null;
+
+      if (nextIsPublic) {
+        if (!nextUsername) {
+          const desired = prompt('Введите юзернейм для открытой группы (4+ символа, латиница, цифры, _)');
+          if (!desired) {
+            setUpdatingType(false);
+            return;
+          }
+
+          const normalized = desired.toLowerCase().trim();
+          if (normalized.length < 4 || !/^[a-z0-9_]+$/.test(normalized)) {
+            alert('Юзернейм должен содержать 4+ символа и только латиницу/цифры/_');
+            setUpdatingType(false);
+            return;
+          }
+
+          const { data: available } = await supabase.rpc('is_group_username_available', {
+            username_to_check: normalized,
+          } as any);
+
+          if (!available) {
+            alert('Этот юзернейм уже занят');
+            setUpdatingType(false);
+            return;
+          }
+
+          nextUsername = normalized;
+        }
+        nextInviteCode = null;
+      } else {
+        nextUsername = null;
+        if (!nextInviteCode) {
+          const { data: codeData, error: codeError } = await supabase.rpc('generate_invite_code');
+          if (codeError) throw codeError;
+          nextInviteCode = codeData as string;
+        }
+      }
+
       const { error } = await supabase
         .from('groups')
         .update({
           is_public: nextIsPublic,
+          username: nextUsername,
+          invite_code: nextInviteCode,
           updated_at: new Date().toISOString(),
         } as any)
         .eq('id', groupId);
@@ -371,7 +438,7 @@ export function GroupInfo({ groupId, onClose, onLeaveGroup }: GroupInfoProps) {
               )}
 
               {!groupData.is_public && canModerate && (
-                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 space-y-2">
                   <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
                     Ссылка-приглашение:
                   </p>
@@ -387,6 +454,14 @@ export function GroupInfo({ groupId, onClose, onLeaveGroup }: GroupInfoProps) {
                       {copied ? <Check size={20} /> : <Copy size={20} />}
                     </button>
                   </div>
+                  <button
+                    onClick={handleRefreshInviteCode}
+                    className="w-full px-3 py-2 text-sm font-medium rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                    title="Обновить код-ссылку"
+                  >
+                    <RefreshCcw size={16} className="inline-block mr-2" />
+                    Обновить код-ссылку
+                  </button>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                     По этой ссылке откроется профиль группы с кнопкой вступления
                   </p>
