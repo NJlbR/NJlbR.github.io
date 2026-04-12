@@ -77,7 +77,7 @@ export function ChannelList({ channels, onChannelCreated, onPreviewChannel, onJo
                     {channel.name}
                   </h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    @{channel.username}
+                    {channel.username ? `@${channel.username}` : 'Канал по коду'}
                   </p>
                   <div className="mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
                     {isPrivate ? <Lock size={12} /> : null}
