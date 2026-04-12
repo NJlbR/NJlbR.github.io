@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Users } from 'lucide-react';
+import { X, Users, AlertCircle, CheckCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Database } from '../../lib/database.types';
@@ -14,8 +14,47 @@ type GroupRow = Database['public']['Tables']['groups']['Row'];
 export function CreateGroupModal({ onClose, onGroupCreated }: CreateGroupModalProps) {
   const { user } = useAuth();
   const [groupName, setGroupName] = useState('');
+  const [username, setUsername] = useState('');
   const [isPublic, setIsPublic] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [usernameValidation, setUsernameValidation] = useState<{ valid: boolean; message: string } | null>(null);
+
+  const validateUsername = async (value: string) => {
+    if (!value) {
+      setUsernameValidation(null);
+      return;
+    }
+
+    if (value.length < 4) {
+      setUsernameValidation({ valid: false, message: 'Минимум 4 символа' });
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(value)) {
+      setUsernameValidation({ valid: false, message: 'Только буквы, цифры и подчеркивание' });
+      return;
+    }
+
+    try {
+      const { data } = await supabase.rpc('is_group_username_available', {
+        username_to_check: value,
+      } as any);
+
+      if (data) {
+        setUsernameValidation({ valid: true, message: 'Доступен' });
+      } else {
+        setUsernameValidation({ valid: false, message: 'Уже занят' });
+      }
+    } catch (err) {
+      setUsernameValidation({ valid: false, message: 'Ошибка проверки' });
+    }
+  };
+
+  const handleUsernameChange = (value: string) => {
+    const normalized = value.toLowerCase();
+    setUsername(normalized);
+    validateUsername(normalized);
+  };
 
   async function handleCreateGroup(e: React.FormEvent) {
     e.preventDefault();
@@ -32,12 +71,27 @@ export function CreateGroupModal({ onClose, onGroupCreated }: CreateGroupModalPr
       return;
     }
 
+    if (isPublic) {
+      if (!username.trim()) {
+        alert('Для открытой группы нужен юзернейм');
+        return;
+      }
+
+      if (!usernameValidation?.valid) {
+        alert('Выберите доступный юзернейм');
+        return;
+      }
+    }
+
     setCreating(true);
 
     try {
-      const { data: inviteCode, error: codeError } = await supabase.rpc('generate_invite_code');
-
-      if (codeError) throw codeError;
+      let inviteCode: string | null = null;
+      if (!isPublic) {
+        const { data: codeData, error: codeError } = await supabase.rpc('generate_invite_code');
+        if (codeError) throw codeError;
+        inviteCode = codeData as string;
+      }
 
       const { data: newGroup, error: groupError } = await supabase
         .from('groups')
@@ -46,6 +100,7 @@ export function CreateGroupModal({ onClose, onGroupCreated }: CreateGroupModalPr
           invite_code: inviteCode,
           created_by: user.id,
           is_public: isPublic,
+          username: isPublic ? username.trim() : null,
         } as any)
         .select()
         .single();
@@ -107,6 +162,43 @@ export function CreateGroupModal({ onClose, onGroupCreated }: CreateGroupModalPr
             </p>
           </div>
 
+          {isPublic && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Юзернейм группы
+              </label>
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => handleUsernameChange(e.target.value)}
+                  placeholder="например, my_group"
+                  maxLength={30}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+                {usernameValidation && (
+                  <div
+                    className={`flex items-center gap-2 text-sm ${
+                      usernameValidation.valid
+                        ? 'text-green-600 dark:text-green-400'
+                        : 'text-red-600 dark:text-red-400'
+                    }`}
+                  >
+                    {usernameValidation.valid ? (
+                      <CheckCircle size={16} />
+                    ) : (
+                      <AlertCircle size={16} />
+                    )}
+                    {usernameValidation.message}
+                  </div>
+                )}
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  4+ символа, только буквы, цифры и подчеркивание
+                </p>
+              </div>
+            </div>
+          )}
+
           <div>
             <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Тип группы
@@ -126,7 +218,11 @@ export function CreateGroupModal({ onClose, onGroupCreated }: CreateGroupModalPr
               </button>
               <button
                 type="button"
-                onClick={() => setIsPublic(false)}
+                onClick={() => {
+                  setIsPublic(false);
+                  setUsername('');
+                  setUsernameValidation(null);
+                }}
                 className={`rounded-lg border px-4 py-3 text-left transition-colors ${
                   !isPublic
                     ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
@@ -160,6 +256,3 @@ export function CreateGroupModal({ onClose, onGroupCreated }: CreateGroupModalPr
     </div>
   );
 }
-
-
-
