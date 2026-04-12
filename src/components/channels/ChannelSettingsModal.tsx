@@ -24,6 +24,7 @@ export function ChannelSettingsModal({
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isModerator, setIsModerator] = useState(false);
   const [usernameValidation, setUsernameValidation] = useState<{
     valid: boolean;
     message: string;
@@ -42,11 +43,21 @@ export function ChannelSettingsModal({
 
     if (data) {
       setChannel(data);
-      setUsername(data.username);
+      setUsername(data.username || '');
       setName(data.name);
       setDescription(data.description || '');
       setIsPrivate(!!data.is_private);
       setAccessCode(data.access_code || null);
+    }
+
+    if (user) {
+      const { data: adminRow } = await supabase
+        .from('channel_admins')
+        .select('id')
+        .eq('channel_id', channelId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      setIsModerator(!!adminRow);
     }
   }
 
@@ -99,7 +110,12 @@ export function ChannelSettingsModal({
     e.preventDefault();
     setError('');
 
-    if (!username || !name) {
+    if (!isCreator) {
+      setError('Недостаточно прав для изменения канала');
+      return;
+    }
+
+    if ((!isPrivate && !username) || !name) {
       setError('Заполните все обязательные поля');
       return;
     }
@@ -117,7 +133,7 @@ export function ChannelSettingsModal({
       }
 
       // Обновляем username если он изменился
-      if (username !== channel.username) {
+      if (!isPrivate && username !== channel.username) {
         const { data: updateUsernameResult, error: usernameError } =
           await supabase.rpc('update_channel_username', {
             channel_id_param: channelId,
@@ -142,6 +158,7 @@ export function ChannelSettingsModal({
           description: description || null,
           is_private: isPrivate,
           access_code: isPrivate ? nextAccessCode : null,
+          username: isPrivate ? null : username,
           updated_at: new Date().toISOString(),
         } as any)
         .eq('id', channelId);
@@ -164,6 +181,29 @@ export function ChannelSettingsModal({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  async function handleRefreshAccessCode() {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase.rpc('regenerate_channel_access_code', {
+        target_channel_id: channelId,
+        actor_user_id: user.id,
+      } as any);
+
+      if (error) throw error;
+
+      const result = data as { success: boolean; access_code?: string; error?: string };
+      if (!result.success || !result.access_code) {
+        alert(result.error || 'Не удалось обновить код');
+        return;
+      }
+
+      setAccessCode(result.access_code);
+      setCopied(false);
+    } catch (err: any) {
+      alert(err.message || 'Не удалось обновить код');
+    }
+  }
 
   async function handleDeleteChannel() {
     if (
@@ -198,6 +238,41 @@ export function ChannelSettingsModal({
   const isCreator = channel?.created_by === user?.id;
   const channelIsPrivate = !!channel?.is_private;
 
+  if (!isCreator) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-md w-full">
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+              Информация о канале
+            </h2>
+            <button
+              onClick={onClose}
+              className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            >
+              <X size={24} />
+            </button>
+          </div>
+          <div className="p-6 space-y-3">
+            <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+              {channelIsPrivate ? <Lock size={16} /> : <Globe size={16} />}
+              {channelIsPrivate ? 'Закрытый канал' : 'Открытый канал'}
+            </div>
+            {channelIsPrivate && isModerator && (
+              <button
+                type="button"
+                onClick={handleRefreshAccessCode}
+                className="w-full px-3 py-2 text-sm font-medium rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+              >
+                Обновить код-ссылку
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
@@ -214,37 +289,39 @@ export function ChannelSettingsModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-900 dark:text-white mb-1">
-              Юзернейм канала
-            </label>
-            <div className="space-y-2">
-              <input
-                type="text"
-                placeholder="например, my_channel"
-                value={username}
-                onChange={(e) => handleUsernameChange(e.target.value)}
-                maxLength={30}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              {usernameValidation && (
-                <div
-                  className={`flex items-center gap-2 text-sm ${
-                    usernameValidation.valid
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-red-600 dark:text-red-400'
-                  }`}
-                >
-                  {usernameValidation.valid ? (
-                    <CheckCircle size={16} />
-                  ) : (
-                    <AlertCircle size={16} />
-                  )}
-                  {usernameValidation.message}
-                </div>
-              )}
+          {!isPrivate && (
+            <div>
+              <label className="block text-sm font-medium text-gray-900 dark:text-white mb-1">
+                Юзернейм канала
+              </label>
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  placeholder="например, my_channel"
+                  value={username}
+                  onChange={(e) => handleUsernameChange(e.target.value)}
+                  maxLength={30}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {usernameValidation && (
+                  <div
+                    className={`flex items-center gap-2 text-sm ${
+                      usernameValidation.valid
+                        ? 'text-green-600 dark:text-green-400'
+                        : 'text-red-600 dark:text-red-400'
+                    }`}
+                  >
+                    {usernameValidation.valid ? (
+                      <CheckCircle size={16} />
+                    ) : (
+                      <AlertCircle size={16} />
+                    )}
+                    {usernameValidation.message}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-900 dark:text-white mb-1">
@@ -296,7 +373,11 @@ export function ChannelSettingsModal({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setIsPrivate(true)}
+                    onClick={() => {
+                      setIsPrivate(true);
+                      setUsername('');
+                      setUsernameValidation(null);
+                    }}
                     className={`rounded-lg border px-4 py-3 text-left transition-colors ${
                       isPrivate
                         ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300'
@@ -312,7 +393,7 @@ export function ChannelSettingsModal({
                 </div>
 
                 {isPrivate && (
-                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 space-y-2">
                     <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
                       Ссылка-приглашение
                     </p>
@@ -330,6 +411,15 @@ export function ChannelSettingsModal({
                         {copied ? <Check size={18} /> : <Copy size={18} />}
                       </button>
                     </div>
+                    {(isCreator || isModerator) && (
+                      <button
+                        type="button"
+                        onClick={handleRefreshAccessCode}
+                        className="w-full px-3 py-2 text-sm font-medium rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                      >
+                        Обновить код-ссылку
+                      </button>
+                    )}
                   </div>
                 )}
               </>
