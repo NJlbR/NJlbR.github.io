@@ -59,22 +59,22 @@ export function CreateChannelModal({ onClose, onChannelCreated }: CreateChannelM
     e.preventDefault();
     setError('');
 
-    if (!username || !name) {
+    if ((!isPrivate && !username) || !name) {
       setError('Заполните все обязательные поля');
       return;
     }
 
-    if (username.length < 4) {
+    if (!isPrivate && username.length < 4) {
       setError('Юзернейм должен содержать минимум 4 символа');
       return;
     }
 
-    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+    if (!isPrivate && !/^[a-zA-Z0-9_]+$/.test(username)) {
       setError('Юзернейм может содержать только буквы, цифры и подчеркивание');
       return;
     }
 
-    if (!usernameValidation?.valid) {
+    if (!isPrivate && !usernameValidation?.valid) {
       setError('Выберите доступный юзернейм');
       return;
     }
@@ -83,7 +83,7 @@ export function CreateChannelModal({ onClose, onChannelCreated }: CreateChannelM
 
     try {
       const { data, error: rpcError } = await supabase.rpc('create_channel', {
-        username_param: username,
+        username_param: isPrivate ? null : username,
         name_param: name,
         description_param: description || null,
         is_private_param: isPrivate
@@ -116,36 +116,38 @@ export function CreateChannelModal({ onClose, onChannelCreated }: CreateChannelM
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-900 dark:text-white mb-1">
-              Юзернейм канала
-            </label>
-            <div className="space-y-2">
-              <input
-                type="text"
-                placeholder="например, my_channel"
-                value={username}
-                onChange={(e) => handleUsernameChange(e.target.value)}
-                maxLength={30}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              {usernameValidation && (
-                <div className={`flex items-center gap-2 text-sm ${
-                  usernameValidation.valid ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-                }`}>
-                  {usernameValidation.valid ? (
-                    <CheckCircle size={16} />
-                  ) : (
-                    <AlertCircle size={16} />
-                  )}
-                  {usernameValidation.message}
-                </div>
-              )}
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                4+ символа, только буквы, цифры и подчеркивание
-              </p>
+          {!isPrivate && (
+            <div>
+              <label className="block text-sm font-medium text-gray-900 dark:text-white mb-1">
+                Юзернейм канала
+              </label>
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  placeholder="например, my_channel"
+                  value={username}
+                  onChange={(e) => handleUsernameChange(e.target.value)}
+                  maxLength={30}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {usernameValidation && (
+                  <div className={`flex items-center gap-2 text-sm ${
+                    usernameValidation.valid ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  }`}>
+                    {usernameValidation.valid ? (
+                      <CheckCircle size={16} />
+                    ) : (
+                      <AlertCircle size={16} />
+                    )}
+                    {usernameValidation.message}
+                  </div>
+                )}
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  4+ символа, только буквы, цифры и подчеркивание
+                </p>
+              </div>
             </div>
-          </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-900 dark:text-white mb-1">
@@ -194,7 +196,11 @@ export function CreateChannelModal({ onClose, onChannelCreated }: CreateChannelM
               </button>
               <button
                 type="button"
-                onClick={() => setIsPrivate(true)}
+                onClick={() => {
+                  setIsPrivate(true);
+                  setUsername('');
+                  setUsernameValidation(null);
+                }}
                 className={`rounded-lg border px-4 py-3 text-left transition-colors ${
                   isPrivate
                     ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300'
@@ -224,7 +230,7 @@ export function CreateChannelModal({ onClose, onChannelCreated }: CreateChannelM
             </button>
             <button
               type="submit"
-              disabled={loading || !usernameValidation?.valid}
+              disabled={loading || (!isPrivate && !usernameValidation?.valid)}
               className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Создание...' : 'Создать'}
