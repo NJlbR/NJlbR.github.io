@@ -243,12 +243,14 @@ export function AdminPanel() {
         ...mediaUrls.map(media => media.type),
       ]));
 
+      const normalizedTypes = effectiveTypes.length > 0 ? effectiveTypes : ['text' as ContentType];
+      const legacyContentType = normalizedTypes.find(type => type === 'text' || type === 'audio' || type === 'video') || 'text';
       let postId = editingPostId;
 
       const postData: any = {
         title,
-        content_type: effectiveTypes[0] || 'text',
-        content_types: effectiveTypes.length > 0 ? effectiveTypes : ['text'],
+        content_type: legacyContentType,
+        content_types: normalizedTypes,
         content,
         description: hasDescription && description ? description : null,
         has_description: hasDescription && Boolean(description),
