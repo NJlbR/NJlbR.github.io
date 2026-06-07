@@ -1,5 +1,5 @@
 import { useState, useMemo, memo, useEffect, useRef } from 'react';
-import { Calendar, Hash, User, ChevronDown, ChevronUp, FileText, Image as ImageIcon, Eye, Heart } from 'lucide-react';
+import { Calendar, Hash, User, ChevronDown, ChevronUp, FileText, Image as ImageIcon, Eye, Heart, Music, Video, File as FileIcon } from 'lucide-react';
 import { AnnotationPopup } from './AnnotationPopup';
 import { MediaContent } from './MediaContent';
 import { CommentsSection } from './CommentsSection';
@@ -137,6 +137,7 @@ function PostCardContent({ post, allAnnotations = [] }: PostCardProps) {
 
   const contentTypes = post.content_types || [post.content_type];
   const mediaUrls = post.media_urls ? (typeof post.media_urls === 'string' ? JSON.parse(post.media_urls) : post.media_urls) : [];
+  const hasTitle = Boolean(post.title?.trim());
 
   const annotatedTitle = useMemo(() => {
     if (!post.title) return [];
@@ -193,15 +194,22 @@ function PostCardContent({ post, allAnnotations = [] }: PostCardProps) {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-6 mb-4 sm:mb-6 transition-colors">
-      <div className="flex items-start justify-between mb-4">
-        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mr-3">
-          {annotatedTitle.length > 0 ? annotatedTitle : post.title}
-        </h2>
+      <div className={`flex items-start justify-between ${hasTitle ? 'mb-4' : 'mb-2'}`}>
+        {hasTitle ? (
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mr-3">
+            {annotatedTitle.length > 0 ? annotatedTitle : post.title}
+          </h2>
+        ) : (
+          <div className="sr-only">Пост без заголовка</div>
+        )}
         <div className="flex gap-2 flex-shrink-0">
           {contentTypes.map(type => {
             switch (type) {
               case 'text': return <FileText key="text" className="text-blue-500" size={20} />;
               case 'photo': return <ImageIcon key="photo" className="text-green-500" size={20} />;
+              case 'audio': return <Music key="audio" className="text-purple-500" size={20} />;
+              case 'video': return <Video key="video" className="text-red-500" size={20} />;
+              case 'file': return <FileIcon key="file" className="text-gray-500" size={20} />;
               default: return null;
             }
           }).filter(Boolean)}
