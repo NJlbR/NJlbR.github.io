@@ -187,6 +187,7 @@ export function AdminPanel() {
 
   async function handleSavePost() {
     const title = postTitle.trim();
+    const titleForDatabase = title || ' ';
     const content = postContent.trim();
     const description = postDescription.trim();
     const hasMedia = existingMediaFiles.length > 0 || mediaFiles.length > 0;
@@ -243,12 +244,14 @@ export function AdminPanel() {
         ...mediaUrls.map(media => media.type),
       ]));
 
+      const normalizedTypes = effectiveTypes.length > 0 ? effectiveTypes : ['text' as ContentType];
+      const legacyContentType = normalizedTypes.find(type => type === 'text' || type === 'audio' || type === 'video') || 'text';
       let postId = editingPostId;
 
       const postData: any = {
-        title,
-        content_type: effectiveTypes[0] || 'text',
-        content_types: effectiveTypes.length > 0 ? effectiveTypes : ['text'],
+        title: titleForDatabase,
+        content_type: legacyContentType,
+        content_types: normalizedTypes,
         content,
         description: hasDescription && description ? description : null,
         has_description: hasDescription && Boolean(description),
@@ -409,7 +412,7 @@ export function AdminPanel() {
 
   async function handleEditPost(post: any) {
     setEditingPostId(post.id);
-    setPostTitle(post.title);
+    setPostTitle(post.title?.trim() ? post.title : '');
     setSelectedTypes(post.content_types || [post.content_type]);
     setPostContent(post.content || '');
     setPostDescription(post.description || '');
