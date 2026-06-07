@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Plus, Trash2, CreditCard as Edit3, Upload, ArrowLeft, Image as ImageIcon, Music, Video, FileText, File as FileIcon, Send, X, MessageSquare, Hash, Users, Captions, Settings2 } from 'lucide-react';
+import { Plus, Trash2, CreditCard as Edit3, Upload, ArrowLeft, Image as ImageIcon, Music, Video, FileText, File as FileIcon, Send, X, Hash, Users, Captions, Save } from 'lucide-react';
 import { detectAnnotations } from '../utils/annotationDetection';
 import { ModerationPanel } from '../components/ModerationPanel';
 import { UserApprovalPanel } from '../components/UserApprovalPanel';
@@ -121,15 +121,6 @@ export function AdminPanel() {
     if (data) setAllAnnotations(data);
   }
 
-  const handleTypeToggle = (type: ContentType) => {
-    setSelectedTypes(prev => {
-      if (prev.includes(type)) {
-        return prev.filter(t => t !== type);
-      } else {
-        return [...prev, type];
-      }
-    });
-  };
 
   const handleFileSelect = (type: ContentType, files: FileList | null) => {
     if (!files?.length) return;
@@ -625,274 +616,240 @@ export function AdminPanel() {
         <ModerationPanel />
       ) : activeTab === 'posts' ? (
           <>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-8">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-                {editingPostId ? 'Редактировать пост' : 'Создать новый пост'}
-              </h2>
+            <div className="mb-8 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800">
+              <div className="flex flex-col gap-3 border-b border-gray-200 p-4 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white sm:text-2xl">
+                  {editingPostId ? 'Редактирование поста' : 'Новый пост'}
+                </h2>
+                <div className="flex gap-2">
+                  {editingPostId && (
+                    <button
+                      onClick={resetPostForm}
+                      className="flex-1 rounded-xl bg-gray-100 px-4 py-2 font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 sm:flex-none"
+                    >
+                      Отмена
+                    </button>
+                  )}
+                  <button
+                    onClick={handleSavePost}
+                    disabled={loading}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700 disabled:bg-gray-400 sm:flex-none"
+                  >
+                    <Send size={18} />
+                    {loading ? 'Сохранение...' : editingPostId ? 'Обновить' : 'Опубликовать'}
+                  </button>
+                </div>
+              </div>
 
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-                <div className="rounded-2xl border border-gray-200 bg-slate-100 p-3 dark:border-gray-700 dark:bg-gray-900/70 sm:p-5">
-                  <div className="mb-4 flex items-center gap-3 text-gray-700 dark:text-gray-200">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-lg shadow-blue-500/20">
-                      <Send size={20} />
-                    </div>
-                    <div>
-                      <p className="font-semibold">Telegram-редактор публикации</p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Заголовок, текст и подпись необязательны — можно отправить только медиа.
-                      </p>
-                    </div>
+              <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="space-y-4 p-4 sm:p-5">
+                  <div>
+                    <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <FileText size={16} />
+                      Заголовок
+                    </label>
+                    <input
+                      type="text"
+                      value={postTitle}
+                      onChange={(e) => setPostTitle(e.target.value)}
+                      className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-lg font-semibold text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+                      placeholder="Заголовок"
+                      maxLength={500}
+                    />
                   </div>
 
-                  <div className="overflow-hidden rounded-3xl bg-[#d7e8f7] p-3 shadow-inner dark:bg-slate-950 sm:p-5">
-                    <div className="ml-auto max-w-2xl rounded-[1.35rem] rounded-br-md bg-white p-4 shadow-md dark:bg-gray-800">
-                      <div className="mb-3 flex items-center justify-between gap-3 border-b border-gray-100 pb-3 dark:border-gray-700">
-                        <div className="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400">
-                          <MessageSquare size={18} />
-                          <span>{editingPostId ? 'Изменение поста' : 'Новый пост'}</span>
-                        </div>
-                        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-300">
-                          {new Date().toLocaleDateString('ru-RU')}
-                        </span>
-                      </div>
+                  <div>
+                    <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <Captions size={16} />
+                      Текст
+                    </label>
+                    <textarea
+                      value={postContent}
+                      onChange={(e) => {
+                        setPostContent(e.target.value);
+                        if (e.target.value && !selectedTypes.includes('text')) {
+                          setSelectedTypes(prev => ['text', ...prev]);
+                        }
+                      }}
+                      rows={10}
+                      className="min-h-[220px] w-full resize-y rounded-xl border border-gray-300 bg-white px-3 py-3 text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+                      placeholder="Текст поста"
+                    />
+                  </div>
 
-                      <div className="space-y-4">
-                        <div>
-                          <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                            <FileText size={16} />
-                            Заголовок <span className="text-xs font-normal text-gray-400">необязательно</span>
-                          </label>
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/70 sm:p-4">
+                    <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {(['photo', 'video', 'audio', 'file'] as ContentType[]).map(type => (
+                        <label
+                          key={type}
+                          className="flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-white px-3 py-3 text-sm font-medium text-gray-700 shadow-sm ring-1 ring-gray-200 transition hover:bg-blue-600 hover:text-white dark:bg-gray-800 dark:text-gray-200 dark:ring-gray-700 dark:hover:bg-blue-600"
+                        >
+                          {type === 'photo' && <ImageIcon size={16} />}
+                          {type === 'video' && <Video size={16} />}
+                          {type === 'audio' && <Music size={16} />}
+                          {type === 'file' && <FileIcon size={16} />}
+                          {contentTypeLabels[type]}
                           <input
-                            type="text"
-                            value={postTitle}
-                            onChange={(e) => setPostTitle(e.target.value)}
-                            className="w-full border-0 border-b border-gray-200 bg-transparent px-0 py-2 text-lg font-semibold text-gray-900 outline-none placeholder:text-gray-400 focus:border-blue-500 dark:border-gray-700 dark:text-white dark:focus:border-blue-400"
-                            placeholder="Добавьте заголовок, если нужен"
-                            maxLength={500}
-                          />
-                        </div>
-
-                        <div>
-                          <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                            <Captions size={16} />
-                            Текст / подпись <span className="text-xs font-normal text-gray-400">можно оставить пустым для медиа-поста</span>
-                          </label>
-                          <textarea
-                            value={postContent}
+                            type="file"
+                            multiple
+                            accept={
+                              type === 'audio' ? 'audio/*,.mp3,.wav,.ogg,.m4a,.aac,.webm' :
+                              type === 'video' ? 'video/*,.mp4,.webm,.ogg,.mov,.avi,.mkv' :
+                              type === 'photo' ? 'image/*,.jpg,.jpeg,.png,.gif,.webp,.svg,.bmp,.tiff,.ico,.heic,.heif,.avif' :
+                              '*/*'
+                            }
                             onChange={(e) => {
-                              setPostContent(e.target.value);
-                              if (e.target.value && !selectedTypes.includes('text')) {
-                                setSelectedTypes(prev => ['text', ...prev]);
-                              }
+                              handleFileSelect(type, e.target.files);
+                              e.target.value = '';
                             }}
-                            rows={8}
-                            className="w-full resize-y rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none transition focus:border-blue-500 focus:bg-white dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:focus:border-blue-400"
-                            placeholder="Введите текст поста или подпись к вложениям..."
+                            className="hidden"
                           />
-                        </div>
-
-                        <div className="rounded-2xl border border-dashed border-blue-200 bg-blue-50/70 p-4 dark:border-blue-900/60 dark:bg-blue-950/30">
-                          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Вложения</p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                Поддерживаются те же форматы: фото, видео, аудио и любые файлы.
-                              </p>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {(['photo', 'video', 'audio', 'file'] as ContentType[]).map(type => (
-                                <label
-                                  key={type}
-                                  className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm ring-1 ring-gray-200 transition hover:bg-blue-600 hover:text-white dark:bg-gray-800 dark:text-gray-200 dark:ring-gray-700 dark:hover:bg-blue-600"
-                                >
-                                  {type === 'photo' && <ImageIcon size={16} />}
-                                  {type === 'video' && <Video size={16} />}
-                                  {type === 'audio' && <Music size={16} />}
-                                  {type === 'file' && <FileIcon size={16} />}
-                                  {contentTypeLabels[type]}
-                                  <input
-                                    type="file"
-                                    multiple
-                                    accept={
-                                      type === 'audio' ? 'audio/*,.mp3,.wav,.ogg,.m4a,.aac,.webm' :
-                                      type === 'video' ? 'video/*,.mp4,.webm,.ogg,.mov,.avi,.mkv' :
-                                      type === 'photo' ? 'image/*,.jpg,.jpeg,.png,.gif,.webp,.svg,.bmp,.tiff,.ico,.heic,.heif,.avif' :
-                                      '*/*'
-                                    }
-                                    onChange={(e) => {
-                                      handleFileSelect(type, e.target.files);
-                                      e.target.value = '';
-                                    }}
-                                    className="hidden"
-                                  />
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-
-                          {[...existingMediaFiles.map((media, index) => ({ ...media, index, existing: true as const })), ...mediaFiles.map((media, index) => ({ type: media.type, filename: media.file.name, size: media.file.size, index, existing: false as const }))].length > 0 ? (
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              {existingMediaFiles.map((media, idx) => (
-                                <div key={`existing-${media.url}-${idx}`} className="flex items-center justify-between gap-3 rounded-xl bg-white p-3 shadow-sm dark:bg-gray-800">
-                                  <div className="flex min-w-0 items-center gap-3">
-                                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300">
-                                      {media.type === 'photo' && <ImageIcon size={18} />}
-                                      {media.type === 'video' && <Video size={18} />}
-                                      {media.type === 'audio' && <Music size={18} />}
-                                      {media.type === 'file' && <FileIcon size={18} />}
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="truncate text-sm font-medium text-gray-900 dark:text-white">{media.filename || 'Загруженное медиа'}</p>
-                                      <p className="text-xs text-gray-500 dark:text-gray-400">{contentTypeLabels[media.type]} • уже в посте</p>
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={() => removeExistingMediaFile(idx)}
-                                    className="rounded-lg p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
-                                    title="Убрать из поста"
-                                  >
-                                    <X size={18} />
-                                  </button>
-                                </div>
-                              ))}
-
-                              {mediaFiles.map((mf, idx) => (
-                                <div key={`${mf.file.name}-${idx}`} className="flex items-center justify-between gap-3 rounded-xl bg-white p-3 shadow-sm dark:bg-gray-800">
-                                  <div className="flex min-w-0 items-center gap-3">
-                                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-300">
-                                      {mf.type === 'photo' && <ImageIcon size={18} />}
-                                      {mf.type === 'video' && <Video size={18} />}
-                                      {mf.type === 'audio' && <Music size={18} />}
-                                      {mf.type === 'file' && <FileIcon size={18} />}
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="truncate text-sm font-medium text-gray-900 dark:text-white">{mf.file.name}</p>
-                                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                                        {contentTypeLabels[mf.type]} • {(mf.file.size / 1024 / 1024).toFixed(2)} МБ
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={() => removeMediaFile(idx)}
-                                    className="rounded-lg p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
-                                    title="Убрать файл"
-                                  >
-                                    <X size={18} />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-white/70 px-4 py-8 text-center transition hover:border-blue-400 hover:bg-white dark:border-gray-700 dark:bg-gray-900/70 dark:hover:border-blue-500">
-                              <Upload className="mb-2 h-8 w-8 text-blue-500" />
-                              <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Выберите вложение для поста</span>
-                              <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">Кнопка ниже добавит файл без текста, подписи и заголовка тоже разрешена.</span>
-                              <input
-                                type="file"
-                                multiple
-                                onChange={(e) => {
-                                  handleFileSelect('file', e.target.files);
-                                  e.target.value = '';
-                                }}
-                                className="hidden"
-                              />
-                            </label>
-                          )}
-                        </div>
-                      </div>
+                        </label>
+                      ))}
                     </div>
+
+                    {[...existingMediaFiles.map((media, index) => ({ ...media, index, existing: true as const })), ...mediaFiles.map((media, index) => ({ type: media.type, filename: media.file.name, size: media.file.size, index, existing: false as const }))].length > 0 ? (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {existingMediaFiles.map((media, idx) => (
+                          <div key={`existing-${media.url}-${idx}`} className="flex items-center justify-between gap-3 rounded-xl bg-white p-3 shadow-sm dark:bg-gray-800">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300">
+                                {media.type === 'photo' && <ImageIcon size={18} />}
+                                {media.type === 'video' && <Video size={18} />}
+                                {media.type === 'audio' && <Music size={18} />}
+                                {media.type === 'file' && <FileIcon size={18} />}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-gray-900 dark:text-white">{media.filename || 'Медиа'}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">{contentTypeLabels[media.type]} • в посте</p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => removeExistingMediaFile(idx)}
+                              className="rounded-lg p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
+                              title="Убрать из поста"
+                            >
+                              <X size={18} />
+                            </button>
+                          </div>
+                        ))}
+
+                        {mediaFiles.map((mf, idx) => (
+                          <div key={`${mf.file.name}-${idx}`} className="flex items-center justify-between gap-3 rounded-xl bg-white p-3 shadow-sm dark:bg-gray-800">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-300">
+                                {mf.type === 'photo' && <ImageIcon size={18} />}
+                                {mf.type === 'video' && <Video size={18} />}
+                                {mf.type === 'audio' && <Music size={18} />}
+                                {mf.type === 'file' && <FileIcon size={18} />}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-gray-900 dark:text-white">{mf.file.name}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  {contentTypeLabels[mf.type]} • {(mf.file.size / 1024 / 1024).toFixed(2)} МБ
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => removeMediaFile(idx)}
+                              className="rounded-lg p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
+                              title="Убрать файл"
+                            >
+                              <X size={18} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 bg-white px-4 py-4 text-center text-sm font-medium text-gray-700 transition hover:border-blue-400 hover:text-blue-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-blue-500 dark:hover:text-blue-300">
+                        <Upload size={18} />
+                        Добавить файл
+                        <input
+                          type="file"
+                          multiple
+                          onChange={(e) => {
+                            handleFileSelect('file', e.target.files);
+                            e.target.value = '';
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
                   </div>
                 </div>
 
-                <aside className="space-y-4">
-                  <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                    <h3 className="mb-3 flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
-                      <Settings2 size={18} />
-                      Параметры
-                    </h3>
+                <aside className="border-t border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/50 sm:p-5 lg:border-l lg:border-t-0">
+                  <div className="space-y-4 lg:sticky lg:top-4">
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-3 rounded-xl bg-white p-3 text-sm font-medium text-gray-700 shadow-sm dark:bg-gray-800 dark:text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={hasDescription}
+                          onChange={(e) => setHasDescription(e.target.checked)}
+                          className="h-4 w-4"
+                        />
+                        Описание
+                      </label>
 
-                    <label className="mb-3 flex items-start gap-3 rounded-xl bg-gray-50 p-3 text-sm text-gray-700 dark:bg-gray-900 dark:text-gray-300">
-                      <input
-                        type="checkbox"
-                        checked={hasDescription}
-                        onChange={(e) => setHasDescription(e.target.checked)}
-                        className="mt-1 h-4 w-4"
-                      />
-                      <span>
-                        <span className="block font-medium">Добавить описание</span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">Дополнительный раскрываемый блок под постом.</span>
-                      </span>
-                    </label>
+                      {hasDescription && (
+                        <textarea
+                          value={postDescription}
+                          onChange={(e) => setPostDescription(e.target.value)}
+                          rows={6}
+                          className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                          placeholder="Описание"
+                        />
+                      )}
 
-                    {hasDescription && (
-                      <textarea
-                        value={postDescription}
-                        onChange={(e) => setPostDescription(e.target.value)}
-                        rows={5}
-                        className="mb-3 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        placeholder="Введите описание поста..."
-                      />
-                    )}
+                      <label className="flex items-center gap-3 rounded-xl bg-white p-3 text-sm font-medium text-gray-700 shadow-sm dark:bg-gray-800 dark:text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={allowComments}
+                          onChange={(e) => setAllowComments(e.target.checked)}
+                          className="h-4 w-4"
+                        />
+                        Комментарии
+                      </label>
+                    </div>
 
-                    <label className="flex items-start gap-3 rounded-xl bg-gray-50 p-3 text-sm text-gray-700 dark:bg-gray-900 dark:text-gray-300">
-                      <input
-                        type="checkbox"
-                        checked={allowComments}
-                        onChange={(e) => setAllowComments(e.target.checked)}
-                        className="mt-1 h-4 w-4"
-                      />
-                      <span>
-                        <span className="block font-medium">Разрешить комментарии</span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">Одобренные пользователи смогут обсуждать пост.</span>
-                      </span>
-                    </label>
-                  </div>
+                    <div className="space-y-3">
+                      <label className="block">
+                        <span className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                          <Hash size={16} />
+                          Хэштеги
+                        </span>
+                        <input
+                          type="text"
+                          value={postHashtags}
+                          onChange={(e) => setPostHashtags(e.target.value)}
+                          placeholder="наука, история"
+                          className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                        />
+                      </label>
 
-                  <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                    <h3 className="mb-3 font-semibold text-gray-900 dark:text-white">Метки</h3>
-                    <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                      <Hash size={16} />
-                      Хэштеги
-                    </label>
-                    <input
-                      type="text"
-                      value={postHashtags}
-                      onChange={(e) => setPostHashtags(e.target.value)}
-                      placeholder="наука, история, философия"
-                      className="mb-4 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                    />
+                      <label className="block">
+                        <span className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                          <Users size={16} />
+                          Персоны
+                        </span>
+                        <input
+                          type="text"
+                          value={postPersons}
+                          onChange={(e) => setPostPersons(e.target.value)}
+                          placeholder="Иван Иванов"
+                          className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                        />
+                      </label>
+                    </div>
 
-                    <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                      <Users size={16} />
-                      Персоны
-                    </label>
-                    <input
-                      type="text"
-                      value={postPersons}
-                      onChange={(e) => setPostPersons(e.target.value)}
-                      placeholder="Иван Иванов, Петр Петров"
-                      className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                     <button
                       onClick={handleSavePost}
                       disabled={loading}
-                      className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-blue-700 disabled:bg-gray-400"
+                      className="hidden w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-blue-700 disabled:bg-gray-400 lg:flex"
                     >
                       <Send size={20} />
-                      {loading ? 'Сохранение...' : editingPostId ? 'Обновить пост' : 'Отправить пост'}
+                      {loading ? 'Сохранение...' : editingPostId ? 'Обновить пост' : 'Опубликовать пост'}
                     </button>
-
-                    {editingPostId && (
-                      <button
-                        onClick={resetPostForm}
-                        className="rounded-xl bg-gray-100 px-6 py-3 font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
-                      >
-                        Отмена
-                      </button>
-                    )}
                   </div>
                 </aside>
               </div>
