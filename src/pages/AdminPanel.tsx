@@ -1,7 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Plus, Trash2, CreditCard as Edit3, Upload, ArrowLeft, Image as ImageIcon, Music, Video, FileText, File as FileIcon, Send, X, Hash, Users, Captions, Settings2 } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  CreditCard as Edit3,
+  Upload,
+  ArrowLeft,
+  Image as ImageIcon,
+  Music,
+  Video,
+  FileText,
+  File as FileIcon,
+  Send,
+  X,
+  Hash,
+  Users,
+  Captions,
+  Settings2,
+} from 'lucide-react';
 import { detectAnnotations } from '../utils/annotationDetection';
 import { ModerationPanel } from '../components/ModerationPanel';
 import { UserApprovalPanel } from '../components/UserApprovalPanel';
