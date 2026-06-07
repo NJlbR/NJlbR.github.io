@@ -186,13 +186,13 @@ export function AdminPanel() {
   }
 
   async function handleSavePost() {
-    const title = postTitle.trim();
-    const titleForDatabase = title || ' ';
+    const visibleTitle = postTitle.trim();
+    const title = visibleTitle || ' ';
     const content = postContent.trim();
     const description = postDescription.trim();
     const hasMedia = existingMediaFiles.length > 0 || mediaFiles.length > 0;
 
-    if (title.length > 500) {
+    if (visibleTitle.length > 500) {
       alert('Название слишком длинное (максимум 500 символов)');
       return;
     }
@@ -202,12 +202,12 @@ export function AdminPanel() {
       return;
     }
 
-    if (!title && !content && !description && !hasMedia) {
+    if (!visibleTitle && !content && !description && !hasMedia) {
       alert('Добавьте текст, заголовок, описание или медиафайл');
       return;
     }
 
-    if (selectedTypes.includes('text') && !content && !hasMedia && !title && !description) {
+    if (selectedTypes.includes('text') && !content && !hasMedia && !visibleTitle && !description) {
       alert('Введите текст для текстового поста или прикрепите медиа');
       return;
     }
@@ -249,7 +249,7 @@ export function AdminPanel() {
       let postId = editingPostId;
 
       const postData: any = {
-        title: titleForDatabase,
+        title,
         content_type: legacyContentType,
         content_types: normalizedTypes,
         content,
