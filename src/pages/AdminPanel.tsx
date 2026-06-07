@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Plus, Trash2, CreditCard as Edit3, Upload, ArrowLeft, Image as ImageIcon, Music, Video, FileText, File as FileIcon, Send, X, Hash, Users, Captions, Save } from 'lucide-react';
 import { detectAnnotations } from '../utils/annotationDetection';
+import { getVisiblePostTitle, normalizePostTitleForStorage } from '../utils/postTitle';
 import { ModerationPanel } from '../components/ModerationPanel';
 import { UserApprovalPanel } from '../components/UserApprovalPanel';
 
@@ -186,8 +187,8 @@ export function AdminPanel() {
   }
 
   async function handleSavePost() {
-    const visibleTitle = postTitle.trim();
-    const title = visibleTitle || ' ';
+    const visibleTitle = getVisiblePostTitle(postTitle);
+    const title = normalizePostTitleForStorage(postTitle);
     const content = postContent.trim();
     const description = postDescription.trim();
     const hasMedia = existingMediaFiles.length > 0 || mediaFiles.length > 0;
@@ -412,7 +413,7 @@ export function AdminPanel() {
 
   async function handleEditPost(post: any) {
     setEditingPostId(post.id);
-    setPostTitle(post.title?.trim() ? post.title : '');
+    setPostTitle(getVisiblePostTitle(post.title));
     setSelectedTypes(post.content_types || [post.content_type]);
     setPostContent(post.content || '');
     setPostDescription(post.description || '');
@@ -871,7 +872,7 @@ export function AdminPanel() {
                   >
                     <div className="flex-1 min-w-0 mr-3">
                       <h3 className="font-bold text-gray-900 dark:text-white truncate">
-                        {post.title}
+                        {getVisiblePostTitle(post.title) || 'Пост без заголовка'}
                       </h3>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
                         {(post.content_types || [post.content_type]).join(', ')} • {new Date(post.created_at).toLocaleDateString('ru-RU')}

@@ -4,6 +4,7 @@ import { AnnotationPopup } from './AnnotationPopup';
 import { MediaContent } from './MediaContent';
 import { CommentsSection } from './CommentsSection';
 import { detectAnnotations, AnnotationMatch } from '../utils/annotationDetection';
+import { getVisiblePostTitle } from '../utils/postTitle';
 import { supabase } from '../lib/supabase';
 import type { Database } from '../lib/database.types';
 
@@ -137,13 +138,14 @@ function PostCardContent({ post, allAnnotations = [] }: PostCardProps) {
 
   const contentTypes = post.content_types || [post.content_type];
   const mediaUrls = post.media_urls ? (typeof post.media_urls === 'string' ? JSON.parse(post.media_urls) : post.media_urls) : [];
-  const hasTitle = Boolean(post.title?.trim());
+  const visibleTitle = getVisiblePostTitle(post.title);
+  const hasTitle = Boolean(visibleTitle);
 
   const annotatedTitle = useMemo(() => {
-    if (!post.title) return [];
-    const matches = detectAnnotations(post.title, allAnnotations);
-    return renderAnnotatedText(post.title, matches, setSelectedAnnotationId, 'annotation-highlight bg-yellow-200 dark:bg-yellow-600 hover:bg-yellow-300 dark:hover:bg-yellow-500 cursor-pointer rounded px-1 transition-colors');
-  }, [post.title, allAnnotations]);
+    if (!visibleTitle) return [];
+    const matches = detectAnnotations(visibleTitle, allAnnotations);
+    return renderAnnotatedText(visibleTitle, matches, setSelectedAnnotationId, 'annotation-highlight bg-yellow-200 dark:bg-yellow-600 hover:bg-yellow-300 dark:hover:bg-yellow-500 cursor-pointer rounded px-1 transition-colors');
+  }, [visibleTitle, allAnnotations]);
 
   const annotatedContent = useMemo(() => {
     if (!contentTypes.includes('text') || !post.content) return [];
@@ -197,7 +199,7 @@ function PostCardContent({ post, allAnnotations = [] }: PostCardProps) {
       <div className={`flex items-start justify-between ${hasTitle ? 'mb-4' : 'mb-2'}`}>
         {hasTitle ? (
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mr-3">
-            {annotatedTitle.length > 0 ? annotatedTitle : post.title}
+            {annotatedTitle.length > 0 ? annotatedTitle : visibleTitle}
           </h2>
         ) : (
           <div className="sr-only">Пост без заголовка</div>
