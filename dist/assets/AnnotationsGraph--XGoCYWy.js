@@ -1,4 +1,4 @@
-import{r as i,s as _,j as t}from"./index-iUwfJXXX.js";import{A as E}from"./main-lFPslrZD.js";function C(){const[d,w]=i.useState([]),[h,k]=i.useState([]),[u,p]=i.useState(null),[v,f]=i.useState(!0);i.useEffect(()=>{A()},[]);async function A(){const{data:s,error:e}=await _.from("post_annotations").select(`
+import{r as i,s as _,j as t}from"./index-DxP9CJ-l.js";import{A as E}from"./main-Ds36nR2n.js";function C(){const[d,w]=i.useState([]),[h,k]=i.useState([]),[u,p]=i.useState(null),[v,f]=i.useState(!0);i.useEffect(()=>{A()},[]);async function A(){const{data:s,error:e}=await _.from("post_annotations").select(`
         post_id,
         annotation_id,
         annotations (
