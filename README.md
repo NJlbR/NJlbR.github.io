@@ -82,6 +82,9 @@
 ```env
 VITE_SUPABASE_URL=https://your-project-ref.supabase.co
 VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+# Опционально: используйте собственный домен/прокси Supabase для регионов,
+# где *.supabase.co может быть недоступен без VPN.
+VITE_SUPABASE_FALLBACK_URL=https://supabase-api.example.com
 ```
 
 ### 1. База данных уже настроена
@@ -230,7 +233,7 @@ VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 
 Проект подготовлен для деплоя как Vite-приложение.
 
-1. Добавьте в Vercel переменные окружения `VITE_SUPABASE_URL` и `VITE_SUPABASE_ANON_KEY`
+1. Добавьте в Vercel переменные окружения `VITE_SUPABASE_URL` и `VITE_SUPABASE_ANON_KEY`. Если пользователи заходят из региона, где `*.supabase.co` недоступен без VPN, также задайте `VITE_SUPABASE_FALLBACK_URL` на собственный доступный домен/прокси Supabase.
 2. Импортируйте проект в Vercel или выполните `vercel`
 3. Build Command: `npm run build`
 4. Output Directory: `dist`
