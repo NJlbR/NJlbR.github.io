@@ -8,4 +8,21 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
+const getProjectRef = (url: string) => {
+  try {
+    return new URL(url).hostname.split('.')[0];
+  } catch {
+    return 'default';
+  }
+};
+
+export const supabaseAuthStorageKey = `sb-${getProjectRef(supabaseUrl)}-auth-token`;
+
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storageKey: supabaseAuthStorageKey,
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+});
