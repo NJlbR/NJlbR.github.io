@@ -98,7 +98,7 @@ function AppContent() {
         <div className="bg-green-600 border-b border-green-700">
           <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2">
             <a
-              href="/admin.html"
+              href="./admin.html"
               className="flex items-center justify-center gap-2 text-white hover:text-green-100 transition-colors font-medium"
             >
               Админ-панель
