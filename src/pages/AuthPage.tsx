@@ -7,22 +7,78 @@ interface AuthPageProps {
   onBack: () => void;
 }
 
+type OtpProvider = 'server' | 'supabase';
+
+interface PendingOtpState {
+  email: string;
+  username: string;
+  provider: OtpProvider;
+}
+
+const PENDING_OTP_STORAGE_KEY = 'auth_pending_otp';
+
+function readPendingOtp(): PendingOtpState | null {
+  try {
+    const raw = window.sessionStorage.getItem(PENDING_OTP_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PendingOtpState>;
+    if (
+      typeof parsed.email === 'string' &&
+      typeof parsed.username === 'string' &&
+      (parsed.provider === 'server' || parsed.provider === 'supabase')
+    ) {
+      return {
+        email: parsed.email,
+        username: parsed.username,
+        provider: parsed.provider,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function savePendingOtp(state: PendingOtpState | null) {
+  try {
+    if (!state) {
+      window.sessionStorage.removeItem(PENDING_OTP_STORAGE_KEY);
+    } else {
+      window.sessionStorage.setItem(PENDING_OTP_STORAGE_KEY, JSON.stringify(state));
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
-  const [mode, setMode] = useState<'login' | 'register' | 'change-password'>('login');
-  const [registerStep, setRegisterStep] = useState<'form' | 'otp'>('form');
+  const initialPending = readPendingOtp();
+  const [mode, setMode] = useState<'login' | 'register' | 'change-password'>(
+    initialPending ? 'register' : 'login'
+  );
+  const [registerStep, setRegisterStep] = useState<'form' | 'otp'>(
+    initialPending ? 'otp' : 'form'
+  );
+  const [otpProvider, setOtpProvider] = useState<OtpProvider>(
+    initialPending?.provider ?? 'server'
+  );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [username, setUsername] = useState('');
   const [otpCode, setOtpCode] = useState('');
-  const [pendingEmail, setPendingEmail] = useState('');
-  const [pendingUsername, setPendingUsername] = useState('');
+  const [pendingEmail, setPendingEmail] = useState(initialPending?.email ?? '');
+  const [pendingUsername, setPendingUsername] = useState(initialPending?.username ?? '');
   const [resendCooldown, setResendCooldown] = useState(0);
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
   const [error, setError] = useState('');
-  const [infoMessage, setInfoMessage] = useState('');
+  const [infoMessage, setInfoMessage] = useState(
+    initialPending
+      ? `Введите одноразовый код подтверждения, отправленный на ${initialPending.email}.`
+      : ''
+  );
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -70,6 +126,14 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
       });
 
     return profileError;
+  }
+
+  function clearPendingRegistration() {
+    savePendingOtp(null);
+    setRegisterStep('form');
+    setOtpCode('');
+    setPendingEmail('');
+    setPendingUsername('');
   }
 
   async function handleLogin(e: React.FormEvent) {
@@ -220,6 +284,58 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
         return;
       }
 
+      // 1. Try server-side real email OTP sender (SMTP / Resend) first
+      let serverFallback = false;
+      try {
+        const otpRes = await fetch('/api/auth/send-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: normalizedEmail,
+            username: normalizedUsername,
+          }),
+        });
+
+        const otpJson = (await otpRes.json().catch(() => null)) as {
+          ok?: boolean;
+          configured?: boolean;
+          error?: string;
+        } | null;
+
+        if (otpRes.ok && otpJson?.ok) {
+          setPendingEmail(normalizedEmail);
+          setPendingUsername(normalizedUsername);
+          setOtpProvider('server');
+          setOtpCode('');
+          setRegisterStep('otp');
+          setResendCooldown(60);
+          savePendingOtp({
+            email: normalizedEmail,
+            username: normalizedUsername,
+            provider: 'server',
+          });
+          setInfoMessage(`Одноразовый код отправлен на ${normalizedEmail}. Проверьте входящие и папку «Спам».`);
+          setLoading(false);
+          return;
+        }
+
+        if (otpRes.status === 404 || (otpRes.status === 503 && otpJson?.configured === false)) {
+          serverFallback = true;
+        } else {
+          setError(otpJson?.error || 'Не удалось отправить одноразовый код на почту.');
+          setLoading(false);
+          return;
+        }
+      } catch {
+        serverFallback = true;
+      }
+
+      if (!serverFallback) {
+        setLoading(false);
+        return;
+      }
+
+      // 2. Fallback to Supabase Auth signup OTP when backend SMTP/Resend is unavailable
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: normalizedEmail,
         password,
@@ -235,10 +351,10 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
         if (authError.message.toLowerCase().includes('already registered')) {
           setError('Email уже зарегистрирован.');
         } else if (authError.message.toLowerCase().includes('rate limit')) {
-          setError('Слишком много попыток. Подождите немного и попробуйте снова.');
+          setError('Превышен лимит отправки писем Supabase. Настройте свой SMTP/Resend или подождите.');
         } else {
           console.error('Signup error:', authError);
-          setError('Ошибка при регистрации. Попробуйте позже.');
+          setError('Ошибка при регистрации. Проверьте настройки Supabase.');
         }
         setLoading(false);
         return;
@@ -269,13 +385,15 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
         }
 
         await supabase.auth.signOut();
+        clearPendingRegistration();
         setMode('login');
-        setRegisterStep('form');
         setPassword('');
         setPasswordConfirm('');
         setUsername('');
         setEmail('');
-        setInfoMessage('Регистрация успешна! Администратор должен одобрить вашу учетную запись перед тем, как вы сможете оставлять комментарии.');
+        setInfoMessage(
+          'Аккаунт создан без подтверждения почты: в Supabase отключен Confirm email и не настроен SMTP/Resend на сервере.'
+        );
         setLoading(false);
         return;
       }
@@ -283,10 +401,18 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
       if (authData.user) {
         setPendingEmail(normalizedEmail);
         setPendingUsername(normalizedUsername);
+        setOtpProvider('supabase');
         setOtpCode('');
         setRegisterStep('otp');
         setResendCooldown(60);
-        setInfoMessage(`Одноразовый код отправлен на ${normalizedEmail}. Проверьте входящие и папку «Спам».`);
+        savePendingOtp({
+          email: normalizedEmail,
+          username: normalizedUsername,
+          provider: 'supabase',
+        });
+        setInfoMessage(`Одноразовый код отправлен на ${normalizedEmail} через Supabase. Проверьте входящие и папку «Спам».`);
+      } else {
+        setError('Не удалось начать регистрацию. Проверьте подключение к серверу.');
       }
     } catch (err: unknown) {
       console.error('Registration error:', err);
@@ -310,50 +436,112 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
     setLoading(true);
 
     try {
-      const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
-        email: pendingEmail,
-        token: cleanedToken,
-        type: 'signup',
-      });
+      if (otpProvider === 'server') {
+        const verifyRes = await fetch('/api/auth/verify-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: pendingEmail,
+            code: cleanedToken,
+            password,
+          }),
+        });
 
-      if (verifyError) {
-        console.error('OTP verify error:', verifyError);
-        setError('Неверный или просроченный код подтверждения. Проверьте код или запросите новый.');
-        setLoading(false);
-        return;
-      }
+        const verifyJson = (await verifyRes.json().catch(() => null)) as {
+          ok?: boolean;
+          accountCreated?: boolean;
+          error?: string;
+        } | null;
 
-      if (verifyData.user) {
-        const profileError = await ensureUserProfile(
-          verifyData.user.id,
-          pendingUsername,
-          pendingEmail
-        );
-
-        if (profileError) {
-          console.error('Profile creation error:', profileError);
-          if (profileError.code === '23505') {
-            setError('Этот username уже занят.');
-          } else {
-            setError('Почта подтверждена, но возникла ошибка при создании профиля. Попробуйте войти.');
-          }
+        if (!verifyRes.ok || !verifyJson?.ok) {
+          setError(verifyJson?.error || 'Неверный или просроченный код подтверждения.');
           setLoading(false);
           return;
         }
+
+        if (!verifyJson.accountCreated) {
+          if (!password) {
+            setError('Сессия формы сбросилась — вернитесь назад и введите пароль повторно.');
+            setLoading(false);
+            return;
+          }
+
+          const { data: authData, error: authError } = await supabase.auth.signUp({
+            email: pendingEmail,
+            password,
+            options: {
+              emailRedirectTo: window.location.origin,
+              data: { username: pendingUsername },
+            },
+          });
+
+          if (authError) {
+            setError(authError.message || 'Почта подтверждена, но не удалось создать аккаунт в Supabase.');
+            setLoading(false);
+            return;
+          }
+
+          if (authData.user) {
+            const profileError = await ensureUserProfile(
+              authData.user.id,
+              pendingUsername,
+              pendingEmail
+            );
+
+            if (profileError && profileError.code !== '23505') {
+              setError('Аккаунт создан, но возникла ошибка профиля. Попробуйте войти.');
+              setLoading(false);
+              return;
+            }
+          }
+
+          await supabase.auth.signOut();
+        }
+      } else {
+        const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
+          email: pendingEmail,
+          token: cleanedToken,
+          type: 'signup',
+        });
+
+        if (verifyError) {
+          console.error('OTP verify error:', verifyError);
+          setError('Неверный или просроченный код подтверждения. Проверьте код или запросите новый.');
+          setLoading(false);
+          return;
+        }
+
+        if (verifyData.user) {
+          const profileError = await ensureUserProfile(
+            verifyData.user.id,
+            pendingUsername,
+            pendingEmail
+          );
+
+          if (profileError) {
+            console.error('Profile creation error:', profileError);
+            if (profileError.code === '23505') {
+              setError('Этот username уже занят.');
+            } else {
+              setError('Почта подтверждена, но возникла ошибка при создании профиля. Попробуйте войти.');
+            }
+            setLoading(false);
+            return;
+          }
+        }
+
+        await supabase.auth.signOut();
       }
 
-      await supabase.auth.signOut();
-
+      clearPendingRegistration();
       setMode('login');
-      setRegisterStep('form');
-      setOtpCode('');
-      setPendingEmail('');
-      setPendingUsername('');
       setPassword('');
       setPasswordConfirm('');
       setUsername('');
       setEmail('');
-      setInfoMessage('Почта подтверждена и регистрация завершена! Администратор должен одобрить вашу учетную запись перед тем, как вы сможете оставлять комментарии.');
+      setInfoMessage(
+        'Почта подтверждена и регистрация завершена! Администратор должен одобрить вашу учетную запись перед тем, как вы сможете оставлять комментарии.'
+      );
     } catch (err: unknown) {
       console.error('Verify OTP unexpected error:', err);
       setError('Не удалось подтвердить код. Попробуйте позже.');
@@ -369,20 +557,39 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
     setLoading(true);
 
     try {
-      const { error: resendError } = await supabase.auth.resend({
-        type: 'signup',
-        email: pendingEmail,
-        options: {
-          emailRedirectTo: window.location.origin,
-        },
-      });
+      if (otpProvider === 'server') {
+        const res = await fetch('/api/auth/send-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: pendingEmail,
+            username: pendingUsername,
+          }),
+        });
+        const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
 
-      if (resendError) {
-        console.error('Resend OTP error:', resendError);
-        setError('Не удалось отправить код повторно. Подождите немного и попробуйте снова.');
+        if (!res.ok || !json?.ok) {
+          setError(json?.error || 'Не удалось отправить код повторно.');
+        } else {
+          setResendCooldown(60);
+          setInfoMessage(`Новый одноразовый код отправлен на ${pendingEmail}.`);
+        }
       } else {
-        setResendCooldown(60);
-        setInfoMessage(`Новый одноразовый код отправлен на ${pendingEmail}.`);
+        const { error: resendError } = await supabase.auth.resend({
+          type: 'signup',
+          email: pendingEmail,
+          options: {
+            emailRedirectTo: window.location.origin,
+          },
+        });
+
+        if (resendError) {
+          console.error('Resend OTP error:', resendError);
+          setError('Не удалось отправить код повторно. Подождите немного и попробуйте снова.');
+        } else {
+          setResendCooldown(60);
+          setInfoMessage(`Новый одноразовый код отправлен на ${pendingEmail}.`);
+        }
       }
     } catch (err: unknown) {
       console.error('Resend OTP unexpected error:', err);
@@ -459,7 +666,10 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 sm:p-8 w-full max-w-md">
         <button
           type="button"
-          onClick={onBack}
+          onClick={() => {
+            clearPendingRegistration();
+            onBack();
+          }}
           className="mb-4 inline-flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors"
         >
           <ArrowLeft size={16} />
@@ -481,7 +691,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
             type="button"
             onClick={() => {
               setMode('login');
-              setRegisterStep('form');
+              clearPendingRegistration();
               setError('');
               setInfoMessage('');
             }}
@@ -500,7 +710,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
             type="button"
             onClick={() => {
               setMode('register');
-              setRegisterStep('form');
+              clearPendingRegistration();
               setError('');
               setInfoMessage('');
             }}
@@ -519,7 +729,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
             type="button"
             onClick={() => {
               setMode('change-password');
-              setRegisterStep('form');
+              clearPendingRegistration();
               setError('');
               setInfoMessage('');
             }}
@@ -598,7 +808,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 required
-                autoComplete="username"
+                autoComplete="email"
               />
             </div>
 
@@ -682,7 +892,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
                 autoComplete="one-time-code"
                 value={otpCode}
                 onChange={(e) => setOtpCode(e.target.value.replace(/\s+/g, ''))}
-                placeholder="Введите 6–8 значный код"
+                placeholder="Введите код из письма"
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center tracking-widest text-lg font-mono"
                 required
                 minLength={6}
@@ -720,8 +930,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
               <button
                 type="button"
                 onClick={() => {
-                  setRegisterStep('form');
-                  setOtpCode('');
+                  clearPendingRegistration();
                   setError('');
                   setInfoMessage('');
                 }}
