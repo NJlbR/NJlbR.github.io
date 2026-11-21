@@ -1,15 +1,61 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>тгк без блокировок</title>
+    <meta name="description" content="тгк без блокировок" />
+    <meta property="og:title" content="тгк без блокировок" />
+    <meta property="og:description" content="тгк без блокировок" />
     <meta property="og:image" content="https://bolt.new/static/og_default.png" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="https://bolt.new/static/og_default.png" />
+    <script>
+      window.$RefreshReg$ = window.$RefreshReg$ || function () {};
+      window.$RefreshSig$ = window.$RefreshSig$ || function () { return function (type) { return type; }; };
+      (function () {
+        function showBootError(msg) {
+          var root = document.getElementById('root');
+          if (!root || root.dataset.appMounted === '1') return;
+          root.textContent = '';
+          var box = document.createElement('div');
+          box.style.cssText = 'min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;font-family:sans-serif;background:#f9fafb;color:#111827;';
+          var card = document.createElement('div');
+          card.style.cssText = 'max-width:440px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;text-align:center;';
+          var title = document.createElement('h2');
+          title.style.cssText = 'margin:0 0 8px;font-size:18px;font-weight:700;';
+          title.textContent = 'Не удалось загрузить сайт';
+          var text = document.createElement('p');
+          text.style.cssText = 'margin:0 0 14px;font-size:14px;color:#4b5563;word-break:break-word;';
+          text.textContent = msg || 'Ошибка загрузки скриптов приложения.';
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = 'Обновить страницу';
+          btn.style.cssText = 'padding:8px 16px;background:#2563eb;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;';
+          btn.onclick = function () { window.location.reload(); };
+          card.appendChild(title);
+          card.appendChild(text);
+          card.appendChild(btn);
+          box.appendChild(card);
+          root.appendChild(box);
+        }
+        window.addEventListener('error', function (e) {
+          if (e && e.message) showBootError(e.message);
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          var reason = e && e.reason;
+          var msg = reason && reason.message ? reason.message : (typeof reason === 'string' ? reason : '');
+          if (msg) showBootError(msg);
+        });
+      })();
+    </script>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="./src/main.tsx"></script>
+    <div id="root">
+      <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;background:#f9fafb;color:#4b5563;">
+        Загрузка...
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
