@@ -8,6 +8,7 @@ import { MessagesPage } from './pages/MessagesPage';
 import { GroupsPage } from './pages/GroupsPage';
 import { ChannelsPage } from './pages/ChannelsPage';
 import { AnnotationPopup } from './components/AnnotationPopup';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { supabase } from './lib/supabase';
 
 const AnnotationsGraph = lazy(() => import('./pages/AnnotationsGraph').then(m => ({ default: m.AnnotationsGraph })));
@@ -170,11 +171,13 @@ function AppContent() {
 
 function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

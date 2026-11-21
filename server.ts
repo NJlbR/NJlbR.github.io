@@ -386,13 +386,17 @@ async function startServer() {
     app.get('/admin.html', (_req, res) => {
       res.sendFile(path.join(distDir, 'admin.html'));
     });
-    app.get('*', (_req, res) => {
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' || req.path.startsWith('/api/')) {
+        next();
+        return;
+      }
       res.sendFile(path.join(distDir, 'index.html'));
     });
   } else {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, hmr: false },
       appType: 'mpa',
     });
     app.use(vite.middlewares);
