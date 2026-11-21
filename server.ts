@@ -72,7 +72,21 @@ function checkIpRateLimit(ip: string): boolean {
   return true;
 }
 
+function getEmailJsConfig() {
+  const serviceId = (process.env.EMAILJS_SERVICE_ID || 'service_z85aznd').trim();
+  const templateId = (process.env.EMAILJS_TEMPLATE_ID || 'template_lh5axtd').trim();
+  const publicKey = (process.env.EMAILJS_PUBLIC_KEY || '').trim();
+  const privateKey = (process.env.EMAILJS_PRIVATE_KEY || '').trim();
+  if (!serviceId || !templateId || !publicKey || !privateKey) {
+    return null;
+  }
+  return { serviceId, templateId, publicKey, privateKey };
+}
+
 function hasEmailProviderConfigured(): boolean {
+  if (getEmailJsConfig()) {
+    return true;
+  }
   if (process.env.RESEND_API_KEY?.trim()) {
     return true;
   }
@@ -84,6 +98,35 @@ function hasEmailProviderConfigured(): boolean {
 }
 
 async function sendOtpEmail(toEmail: string, username: string, code: string): Promise<void> {
+  const emailJs = getEmailJsConfig();
+  if (emailJs) {
+    const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        service_id: emailJs.serviceId,
+        template_id: emailJs.templateId,
+        user_id: emailJs.publicKey,
+        accessToken: emailJs.privateKey,
+        template_params: {
+          to_email: toEmail,
+          email: toEmail,
+          username,
+          otp_code: code,
+          code,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`EmailJS API error (${response.status}): ${errorText}`);
+    }
+    return;
+  }
+
   const safeUsername = escapeHtml(username);
   const subject = `Код подтверждения регистрации: ${code}`;
   const text = `Здравствуйте, ${username}!\n\nВаш одноразовый код для подтверждения почты: ${code}\n\nКод действителен 10 минут. Если вы не регистрировались, просто проигнорируйте это письмо.`;
