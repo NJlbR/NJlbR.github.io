@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import type { Database } from '../lib/database.types';
-
-type Annotation = Database['public']['Tables']['annotations']['Row'];
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import {
+  getBuiltinAnnotationById,
+  isBuiltinAnnotationId,
+  type AnnotationRow,
+} from '../utils/annotationsCatalog';
 
 interface AnnotationPopupProps {
   annotationId: string;
@@ -11,22 +13,49 @@ interface AnnotationPopupProps {
 }
 
 export function AnnotationPopup({ annotationId, onClose }: AnnotationPopupProps) {
-  const [annotation, setAnnotation] = useState<Annotation | null>(null);
+  const [annotation, setAnnotation] = useState<AnnotationRow | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
+
     async function fetchAnnotation() {
+      setLoading(true);
+
+      if (isBuiltinAnnotationId(annotationId)) {
+        const builtin = getBuiltinAnnotationById(annotationId);
+        if (active) {
+          setAnnotation(builtin);
+          setLoading(false);
+        }
+        return;
+      }
+
+      if (!isSupabaseConfigured) {
+        if (active) {
+          setAnnotation(null);
+          setLoading(false);
+        }
+        return;
+      }
+
       const { data } = await supabase
         .from('annotations')
         .select('*')
         .eq('id', annotationId)
         .maybeSingle();
 
-      if (data) setAnnotation(data);
-      setLoading(false);
+      if (active) {
+        setAnnotation(data ?? null);
+        setLoading(false);
+      }
     }
 
     fetchAnnotation();
+
+    return () => {
+      active = false;
+    };
   }, [annotationId]);
 
   if (loading) {

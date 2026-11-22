@@ -17,7 +17,11 @@ import { MessagesPage } from './pages/MessagesPage';
 import { GroupsPage } from './pages/GroupsPage';
 import { ChannelsPage } from './pages/ChannelsPage';
 import { AnnotationPopup } from './components/AnnotationPopup';
-import { isSupabaseConfigured, supabase } from './lib/supabase';
+import { isSupabaseConfigured } from './lib/supabase';
+import {
+  fetchAllSupabaseAnnotations,
+  mergeAnnotationsWithCatalog,
+} from './utils/annotationsCatalog';
 
 const AnnotationsGraph = lazy(() =>
   import('./pages/AnnotationsGraph').then((m) => ({ default: m.AnnotationsGraph }))
@@ -98,13 +102,17 @@ function AppContent() {
   const [randomAnnotationId, setRandomAnnotationId] = useState<string | null>(null);
 
   const handleRandomAnnotation = useCallback(async () => {
-    if (!isSupabaseConfigured) return;
+    let dbAnnotations: { id: string; term: string }[] = [];
 
-    const { data } = await supabase.from('annotations').select('id').limit(100);
+    if (isSupabaseConfigured) {
+      const { data } = await fetchAllSupabaseAnnotations<{ id: string; term: string }>('id, term');
+      dbAnnotations = data;
+    }
 
-    if (data && data.length > 0) {
-      const randomIndex = Math.floor(Math.random() * data.length);
-      setRandomAnnotationId(data[randomIndex].id);
+    const pool = mergeAnnotationsWithCatalog(dbAnnotations);
+    if (pool.length > 0) {
+      const randomIndex = Math.floor(Math.random() * pool.length);
+      setRandomAnnotationId(pool[randomIndex].id);
     }
   }, []);
 

@@ -12,8 +12,14 @@ export function detectAnnotations(
   const matches: AnnotationMatch[] = [];
   const lowerText = text.toLowerCase();
 
-  annotations.forEach((annotation) => {
-    const lowerTerm = annotation.term.toLowerCase();
+  const orderedAnnotations = [...annotations].sort(
+    (a, b) => b.term.length - a.term.length
+  );
+
+  orderedAnnotations.forEach((annotation) => {
+    const lowerTerm = annotation.term.trim().toLowerCase();
+    if (!lowerTerm) return;
+
     let startIndex = 0;
 
     while (true) {

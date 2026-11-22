@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Plus, Trash2, CreditCard as Edit3, Upload, ArrowLeft, Image as ImageIcon, Music, Video, FileText, File as FileIcon, Send, X, Hash, Users, Captions, Save } from 'lucide-react';
+import { Plus, Trash2, CreditCard as Edit3, Upload, ArrowLeft, Image as ImageIcon, Music, Video, FileText, File as FileIcon, Send, X, Hash, Users, Captions, Save, BookOpen, Search } from 'lucide-react';
 import { detectAnnotations } from '../utils/annotationDetection';
 import { getVisiblePostTitle, normalizePostTitleForStorage } from '../utils/postTitle';
+import { ANNOTATIONS_CATALOG } from '../data/annotationsCatalog';
+import { fetchAllSupabaseAnnotations } from '../utils/annotationsCatalog';
 import { ModerationPanel } from '../components/ModerationPanel';
 import { UserApprovalPanel } from '../components/UserApprovalPanel';
 
@@ -93,6 +95,9 @@ export function AdminPanel() {
   const [activeTab, setActiveTab] = useState<'posts' | 'annotations' | 'moderation' | 'users'>('posts');
 
   const [allAnnotations, setAllAnnotations] = useState<any[]>([]);
+  const [annotationSearch, setAnnotationSearch] = useState('');
+  const [importingCatalog, setImportingCatalog] = useState(false);
+  const [importCatalogStatus, setImportCatalogStatus] = useState<string | null>(null);
   const [newAnnotationTerm, setNewAnnotationTerm] = useState('');
   const [newAnnotationContent, setNewAnnotationContent] = useState('');
   const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null);
@@ -115,11 +120,8 @@ export function AdminPanel() {
   }
 
   async function fetchAnnotations() {
-    const { data } = await supabase
-      .from('annotations')
-      .select('*')
-      .order('term');
-    if (data) setAllAnnotations(data);
+    const { data, error } = await fetchAllSupabaseAnnotations('*');
+    if (!error) setAllAnnotations(data);
   }
 
 
@@ -338,11 +340,12 @@ export function AdminPanel() {
       if (postId) {
         await supabase.from('post_annotations').delete().eq('post_id', postId);
 
-        const { data: allAnnotationsData } = await supabase
-          .from('annotations')
-          .select('id, term');
+        const { data: allAnnotationsData } = await fetchAllSupabaseAnnotations<{
+          id: string;
+          term: string;
+        }>('id, term');
 
-        if (allAnnotationsData) {
+        if (allAnnotationsData.length > 0) {
           const annotationMatches = new Map<string, { start: number; end: number }[]>();
 
           if (postContent) {
@@ -522,6 +525,63 @@ export function AdminPanel() {
       alert('Ошибка удаления: ' + error.message);
     } else {
       fetchAnnotations();
+    }
+  }
+
+  async function handleImportCatalogAnnotations() {
+    setImportingCatalog(true);
+    setImportCatalogStatus(null);
+
+    try {
+      const { data: existingRows, error: fetchError } = await fetchAllSupabaseAnnotations<{
+        id: string;
+        term: string;
+      }>('id, term');
+
+      if (fetchError) {
+        throw fetchError;
+      }
+
+      const existingLower = new Set(
+        existingRows.map((row) => row.term.trim().toLowerCase())
+      );
+
+      const missingItems = ANNOTATIONS_CATALOG.filter(
+        (item) => !existingLower.has(item.term.trim().toLowerCase())
+      );
+
+      if (missingItems.length === 0) {
+        setImportCatalogStatus('Все термины и фамилии из базовой базы уже загружены в Supabase.');
+        return;
+      }
+
+      const batchSize = 50;
+      let insertedCount = 0;
+
+      for (let i = 0; i < missingItems.length; i += batchSize) {
+        const batch = missingItems.slice(i, i + batchSize).map((item) => ({
+          term: item.term.trim(),
+          content: item.content.trim(),
+        }));
+
+        const { error: upsertError } = await supabase
+          .from('annotations')
+          .upsert(batch as any, { onConflict: 'term', ignoreDuplicates: true });
+
+        if (upsertError) {
+          throw upsertError;
+        }
+
+        insertedCount += batch.length;
+        setImportCatalogStatus(`Загружено ${insertedCount} из ${missingItems.length}...`);
+      }
+
+      await fetchAnnotations();
+      setImportCatalogStatus(`Готово! Загружено аннотаций в Supabase: ${insertedCount}.`);
+    } catch (err: any) {
+      setImportCatalogStatus(`Ошибка загрузки: ${err?.message || 'неизвестная ошибка'}`);
+    } finally {
+      setImportingCatalog(false);
     }
   }
 
@@ -1002,12 +1062,62 @@ export function AdminPanel() {
             )}
 
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-                Все аннотации ({allAnnotations.length})
-              </h3>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <BookOpen size={20} className="text-blue-600 dark:text-blue-400" />
+                    Базовая база аннотаций ({ANNOTATIONS_CATALOG.length} терминов и фамилий)
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    Умные и редкие слова, а также фамилии знаменитых учёных, писателей и деятелей культуры (в рамках законодательства РФ). Уже на сайте автоматически; при желании сохраните их в таблицу Supabase для редактирования и графа связей.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleImportCatalogAnnotations}
+                  disabled={importingCatalog}
+                  className="flex-shrink-0 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg transition-colors text-sm font-medium"
+                >
+                  {importingCatalog ? 'Загрузка...' : 'Загрузить в Supabase'}
+                </button>
+              </div>
+              {importCatalogStatus && (
+                <p className="mt-3 text-sm text-blue-700 dark:text-blue-300 font-medium">
+                  {importCatalogStatus}
+                </p>
+              )}
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Все аннотации в Supabase ({allAnnotations.length})
+                </h3>
+                {allAnnotations.length > 0 && (
+                  <div className="relative w-full sm:w-72">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={annotationSearch}
+                      onChange={(e) => setAnnotationSearch(e.target.value)}
+                      placeholder="Поиск по термину..."
+                      className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                )}
+              </div>
 
               <div className="space-y-3">
-                {allAnnotations.map((ann) => (
+                {allAnnotations
+                  .filter((ann) => {
+                    const query = annotationSearch.trim().toLowerCase();
+                    if (!query) return true;
+                    return (
+                      ann.term.toLowerCase().includes(query) ||
+                      (ann.content || '').toLowerCase().includes(query)
+                    );
+                  })
+                  .map((ann) => (
                   <div
                     key={ann.id}
                     className="flex items-start justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
@@ -1039,7 +1149,7 @@ export function AdminPanel() {
 
                 {allAnnotations.length === 0 && (
                   <p className="text-gray-600 dark:text-gray-400 text-center py-4">
-                    Аннотаций пока нет
+                    Аннотаций в Supabase пока нет
                   </p>
                 )}
               </div>

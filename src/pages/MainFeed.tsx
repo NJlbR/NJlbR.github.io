@@ -2,6 +2,10 @@ import { useState, useEffect, useMemo } from 'react';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { PostCard } from '../components/PostCard';
 import { Filters, FilterState } from '../components/Filters';
+import {
+  fetchAllSupabaseAnnotations,
+  mergeAnnotationsWithCatalog,
+} from '../utils/annotationsCatalog';
 import type { Database } from '../lib/database.types';
 
 type Post = Database['public']['Tables']['posts']['Row'];
@@ -14,7 +18,9 @@ interface PostWithRelations extends Post {
 
 export function MainFeed() {
   const [posts, setPosts] = useState<PostWithRelations[]>([]);
-  const [allAnnotations, setAllAnnotations] = useState<{ id: string; term: string }[]>([]);
+  const [allAnnotations, setAllAnnotations] = useState<{ id: string; term: string }[]>(
+    () => mergeAnnotationsWithCatalog([])
+  );
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>({
@@ -41,13 +47,12 @@ export function MainFeed() {
   async function fetchAnnotations() {
     if (!isSupabaseConfigured) return;
 
-    const { data, error } = await supabase
-      .from('annotations')
-      .select('id, term')
-      .order('term');
+    const { data, error } = await fetchAllSupabaseAnnotations<{ id: string; term: string }>(
+      'id, term'
+    );
 
-    if (!error && data) {
-      setAllAnnotations(data);
+    if (!error) {
+      setAllAnnotations(mergeAnnotationsWithCatalog(data));
     }
   }
 
