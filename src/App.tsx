@@ -16,22 +16,37 @@ type Page = 'feed' | 'graph' | 'auth' | 'messages' | 'channels' | 'groups';
 
 function AppContent() {
   const { profile } = useAuth();
-  const getInviteCodesFromUrl = () => {
+  const getInitialStateFromUrl = () => {
     const params = new URLSearchParams(window.location.search);
     return {
       group: params.get('group'),
       channel: params.get('channel'),
+      page: params.get('page'),
     };
   };
   const [currentPage, setCurrentPage] = useState<Page>(() => {
-    const { channel, group } = getInviteCodesFromUrl();
+    const { channel, group, page } = getInitialStateFromUrl();
     if (channel) return 'channels';
     if (group) return 'groups';
+    if (page === 'auth' || page === 'messages' || page === 'channels' || page === 'groups' || page === 'graph') {
+      return page;
+    }
     return 'feed';
   });
-  const [groupInviteCode, setGroupInviteCode] = useState<string | null>(() => getInviteCodesFromUrl().group);
-  const [channelInviteCode, setChannelInviteCode] = useState<string | null>(() => getInviteCodesFromUrl().channel);
+  const [groupInviteCode, setGroupInviteCode] = useState<string | null>(() => getInitialStateFromUrl().group);
+  const [channelInviteCode, setChannelInviteCode] = useState<string | null>(() => getInitialStateFromUrl().channel);
   const [randomAnnotationId, setRandomAnnotationId] = useState<string | null>(null);
+
+  const navigateTo = useCallback((page: Page) => {
+    setCurrentPage(page);
+    const url = new URL(window.location.href);
+    if (page === 'feed') {
+      url.searchParams.delete('page');
+    } else {
+      url.searchParams.set('page', page);
+    }
+    window.history.replaceState({}, '', url.toString());
+  }, []);
 
   const handleRandomAnnotation = useCallback(async () => {
     const { data } = await supabase
@@ -45,16 +60,16 @@ function AppContent() {
     }
   }, []);
 
-  const handleNavigateGraph = useCallback(() => setCurrentPage('graph'), []);
-  const handleNavigateHome = useCallback(() => setCurrentPage('feed'), []);
-  const handleNavigateAuth = useCallback(() => setCurrentPage('auth'), []);
-  const handleNavigateMessages = useCallback(() => setCurrentPage('messages'), []);
-  const handleNavigateChannels = useCallback(() => setCurrentPage('channels'), []);
-  const handleNavigateGroups = useCallback(() => setCurrentPage('groups'), []);
+  const handleNavigateGraph = useCallback(() => navigateTo('graph'), [navigateTo]);
+  const handleNavigateHome = useCallback(() => navigateTo('feed'), [navigateTo]);
+  const handleNavigateAuth = useCallback(() => navigateTo('auth'), [navigateTo]);
+  const handleNavigateMessages = useCallback(() => navigateTo('messages'), [navigateTo]);
+  const handleNavigateChannels = useCallback(() => navigateTo('channels'), [navigateTo]);
+  const handleNavigateGroups = useCallback(() => navigateTo('groups'), [navigateTo]);
 
   useEffect(() => {
     const handleLocationChange = () => {
-      const { group, channel } = getInviteCodesFromUrl();
+      const { group, channel, page } = getInitialStateFromUrl();
       setGroupInviteCode(group);
       setChannelInviteCode(channel);
 
@@ -65,6 +80,13 @@ function AppContent() {
 
       if (group) {
         setCurrentPage('groups');
+        return;
+      }
+
+      if (page === 'auth' || page === 'messages' || page === 'channels' || page === 'groups' || page === 'graph') {
+        setCurrentPage(page);
+      } else {
+        setCurrentPage('feed');
       }
     };
 
@@ -75,8 +97,8 @@ function AppContent() {
   if (currentPage === 'auth') {
     return (
       <AuthPage
-        onAuthSuccess={() => setCurrentPage('feed')}
-        onBack={() => setCurrentPage('feed')}
+        onAuthSuccess={() => navigateTo('feed')}
+        onBack={() => navigateTo('feed')}
       />
     );
   }
