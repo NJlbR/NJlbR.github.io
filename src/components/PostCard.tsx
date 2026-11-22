@@ -137,7 +137,19 @@ function PostCardContent({ post, allAnnotations = [] }: PostCardProps) {
   }
 
   const contentTypes = post.content_types || [post.content_type];
-  const mediaUrls = post.media_urls ? (typeof post.media_urls === 'string' ? JSON.parse(post.media_urls) : post.media_urls) : [];
+  const mediaUrls = useMemo(() => {
+    if (!post.media_urls) return [];
+    if (Array.isArray(post.media_urls)) return post.media_urls;
+    if (typeof post.media_urls === 'string') {
+      try {
+        const parsed = JSON.parse(post.media_urls);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }, [post.media_urls]);
   const visibleTitle = getVisiblePostTitle(post.title);
   const hasTitle = Boolean(visibleTitle);
 
