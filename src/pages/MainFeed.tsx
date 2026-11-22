@@ -16,6 +16,7 @@ export function MainFeed() {
   const [posts, setPosts] = useState<PostWithRelations[]>([]);
   const [allAnnotations, setAllAnnotations] = useState<{ id: string; term: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     contentType: '',
     hashtag: '',
@@ -41,6 +42,7 @@ export function MainFeed() {
   }
 
   async function fetchPosts() {
+    setFetchError(null);
     const { data: postsData, error } = await supabase
       .from('posts')
       .select(`
@@ -66,7 +68,16 @@ export function MainFeed() {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching posts:', error);
+      const message = error.message || '';
+      if (message.toLowerCase().includes('api key')) {
+        console.warn('Supabase API key error while fetching posts:', error);
+        setFetchError(
+          'Ошибка ключа Supabase (Unregistered API key): проверьте, что VITE_SUPABASE_URL и VITE_SUPABASE_ANON_KEY взяты из одного и того же проекта (Project Settings → API, публичный anon / publishable ключ без кавычек и лишних пробелов).'
+        );
+      } else {
+        console.warn('Error fetching posts:', error);
+        setFetchError(`Не удалось загрузить посты: ${message}`);
+      }
       setLoading(false);
       return;
     }
@@ -74,8 +85,12 @@ export function MainFeed() {
     if (postsData) {
       const postsWithRelations = (postsData as any[]).map((post: any) => ({
         ...post,
-        hashtags: post.post_hashtags?.map((h: any) => ({ name: h.hashtags.name })) || [],
-        persons: post.post_persons?.map((p: any) => ({ name: p.persons.name })) || [],
+        hashtags: (post.post_hashtags || [])
+          .filter((h: any) => h?.hashtags?.name)
+          .map((h: any) => ({ name: h.hashtags.name })),
+        persons: (post.post_persons || [])
+          .filter((p: any) => p?.persons?.name)
+          .map((p: any) => ({ name: p.persons.name })),
       })) as PostWithRelations[];
 
       setPosts(postsWithRelations);
@@ -140,7 +155,16 @@ export function MainFeed() {
     <div className="max-w-4xl mx-auto px-4 py-8">
       <Filters onFilterChange={setFilters} />
 
-      {filteredPosts.length === 0 ? (
+      {fetchError ? (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 text-center">
+          <p className="text-red-800 dark:text-red-200 font-medium mb-2">
+            Ошибка подключения к Supabase
+          </p>
+          <p className="text-red-700 dark:text-red-300 text-sm">
+            {fetchError}
+          </p>
+        </div>
+      ) : filteredPosts.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-gray-600 dark:text-gray-400 text-lg">
             {posts.length === 0 ? 'Постов пока нет. Добавьте первый пост в админ-панели!' : 'Посты не найдены с выбранными фильтрами.'}
