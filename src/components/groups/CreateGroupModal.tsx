@@ -109,12 +109,9 @@ export function CreateGroupModal({ onClose, onGroupCreated }: CreateGroupModalPr
     setCreating(true);
 
     try {
-      let inviteCode: string | null = null;
-      if (!isPublic) {
-        const { data: codeData, error: codeError } = await supabase.rpc('generate_invite_code');
-        if (codeError) throw codeError;
-        inviteCode = codeData as string;
-      }
+      const { data: codeData, error: codeError } = await supabase.rpc('generate_invite_code');
+      if (codeError) throw codeError;
+      const inviteCode = codeData as string;
 
       const { data: newGroup, error: groupError } = await supabase
         .from('groups')
