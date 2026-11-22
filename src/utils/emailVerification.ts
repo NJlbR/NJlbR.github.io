@@ -135,6 +135,11 @@ export async function sendVerificationOtpEmail(params: {
   }
 
   const normalizedEmail = params.email.trim().toLowerCase();
+  const expiresAtFormatted = new Date(Date.now() + OTP_TTL_MS).toLocaleTimeString('ru-RU', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const messageText = `Ваш одноразовый код подтверждения регистрации: ${params.code}. Код действителен 10 минут (до ${expiresAtFormatted}).`;
 
   const response = await fetch(EMAILJS_API_URL, {
     method: 'POST',
@@ -152,13 +157,31 @@ export async function sendVerificationOtpEmail(params: {
         reply_to: normalizedEmail,
         to_name: params.username,
         username: params.username,
+        user_name: params.username,
         name: params.username,
         code: params.code,
         otp: params.code,
+        otp_code: params.code,
         passcode: params.code,
         verification_code: params.code,
+        verify_code: params.code,
+        confirm_code: params.code,
+        confirmation_code: params.code,
+        auth_code: params.code,
+        one_time_code: params.code,
+        one_time_password: params.code,
+        pin: params.code,
+        pin_code: params.code,
+        token: params.code,
+        time: expiresAtFormatted,
         expires_in: '10 минут',
         app_name: 'тгк без блокировок',
+        title: `Код подтверждения: ${params.code}`,
+        subject: `Код подтверждения: ${params.code}`,
+        message: messageText,
+        text: messageText,
+        body: messageText,
+        content: messageText,
       },
     }),
   });
