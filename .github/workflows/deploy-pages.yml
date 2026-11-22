@@ -33,10 +33,14 @@ jobs:
 
       - name: Build
         env:
+          GH_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || secrets.SUPABASE_URL }}
+          GH_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
           GH_EMAILJS_SERVICE_ID: ${{ secrets.VITE_EMAILJS_SERVICE_ID || secrets.EMAILJS_SERVICE_ID }}
           GH_EMAILJS_TEMPLATE_ID: ${{ secrets.VITE_EMAILJS_TEMPLATE_ID || secrets.EMAILJS_TEMPLATE_ID }}
           GH_EMAILJS_PUBLIC_KEY: ${{ secrets.VITE_EMAILJS_PUBLIC_KEY || secrets.EMAILJS_PUBLIC_KEY || secrets.VITE_EMAILJS_USER_ID || secrets.EMAILJS_USER_ID }}
         run: |
+          if [ -n "$GH_SUPABASE_URL" ]; then export VITE_SUPABASE_URL="$GH_SUPABASE_URL"; fi
+          if [ -n "$GH_SUPABASE_ANON_KEY" ]; then export VITE_SUPABASE_ANON_KEY="$GH_SUPABASE_ANON_KEY"; fi
           if [ -n "$GH_EMAILJS_SERVICE_ID" ]; then export VITE_EMAILJS_SERVICE_ID="$GH_EMAILJS_SERVICE_ID"; fi
           if [ -n "$GH_EMAILJS_TEMPLATE_ID" ]; then export VITE_EMAILJS_TEMPLATE_ID="$GH_EMAILJS_TEMPLATE_ID"; fi
           if [ -n "$GH_EMAILJS_PUBLIC_KEY" ]; then export VITE_EMAILJS_PUBLIC_KEY="$GH_EMAILJS_PUBLIC_KEY"; fi
