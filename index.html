@@ -39,6 +39,7 @@
           box.appendChild(card);
           root.appendChild(box);
         }
+        window.__showBootError = showBootError;
         window.addEventListener('error', function (e) {
           if (e && e.message) showBootError(e.message);
         });
@@ -47,6 +48,12 @@
           var msg = reason && reason.message ? reason.message : (typeof reason === 'string' ? reason : '');
           if (msg) showBootError(msg);
         });
+        window.setTimeout(function () {
+          var root = document.getElementById('root');
+          if (root && root.dataset.appMounted !== '1') {
+            showBootError('Загрузка занимает слишком много времени. Проверьте подключение и нажмите «Обновить страницу».');
+          }
+        }, 15000);
       })();
     </script>
   </head>
@@ -56,6 +63,6 @@
         Загрузка...
       </div>
     </div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="/src/main.tsx" onerror="window.__showBootError && window.__showBootError('Не удалось загрузить основной скрипт приложения.')"></script>
   </body>
 </html>

@@ -11,6 +11,17 @@ export default defineConfig(({ command }) => ({
     port: 3000,
     allowedHosts: true,
   },
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'react-dom/client',
+      'react/jsx-dev-runtime',
+      'react/jsx-runtime',
+      'lucide-react',
+      '@supabase/supabase-js',
+    ],
+  },
   build: {
     rollupOptions: {
       input: {
