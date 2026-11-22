@@ -3,28 +3,16 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Header } from './components/Header';
 import { MainFeed } from './pages/MainFeed';
+import { AuthPage } from './pages/AuthPage';
+import { MessagesPage } from './pages/MessagesPage';
+import { GroupsPage } from './pages/GroupsPage';
+import { ChannelsPage } from './pages/ChannelsPage';
 import { AnnotationPopup } from './components/AnnotationPopup';
-import { ErrorBoundary } from './components/ErrorBoundary';
 import { supabase } from './lib/supabase';
 
-const AuthPage = lazy(() => import('./pages/AuthPage').then(m => ({ default: m.AuthPage })));
-const MessagesPage = lazy(() => import('./pages/MessagesPage').then(m => ({ default: m.MessagesPage })));
-const GroupsPage = lazy(() => import('./pages/GroupsPage').then(m => ({ default: m.GroupsPage })));
-const ChannelsPage = lazy(() => import('./pages/ChannelsPage').then(m => ({ default: m.ChannelsPage })));
 const AnnotationsGraph = lazy(() => import('./pages/AnnotationsGraph').then(m => ({ default: m.AnnotationsGraph })));
 
 type Page = 'feed' | 'graph' | 'auth' | 'messages' | 'channels' | 'groups';
-
-function PageFallback() {
-  return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 animate-pulse">
-        <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-2/3 mb-4"></div>
-        <div className="h-48 bg-gray-200 dark:bg-gray-700 rounded"></div>
-      </div>
-    </div>
-  );
-}
 
 function AppContent() {
   const { profile } = useAuth();
@@ -108,12 +96,10 @@ function AppContent() {
 
   if (currentPage === 'auth') {
     return (
-      <Suspense fallback={<PageFallback />}>
-        <AuthPage
-          onAuthSuccess={() => navigateTo('feed')}
-          onBack={() => navigateTo('feed')}
-        />
-      </Suspense>
+      <AuthPage
+        onAuthSuccess={() => navigateTo('feed')}
+        onBack={() => navigateTo('feed')}
+      />
     );
   }
 
@@ -145,29 +131,28 @@ function AppContent() {
 
       <main>
         {currentPage === 'feed' && <MainFeed />}
-        {currentPage === 'messages' && (
-          <Suspense fallback={<PageFallback />}>
-            <MessagesPage onNavigateAuth={handleNavigateAuth} />
-          </Suspense>
-        )}
+        {currentPage === 'messages' && <MessagesPage onNavigateAuth={handleNavigateAuth} />}
         {currentPage === 'channels' && (
-          <Suspense fallback={<PageFallback />}>
-            <ChannelsPage
-              onNavigateAuth={handleNavigateAuth}
-              initialInviteCode={channelInviteCode}
-            />
-          </Suspense>
+          <ChannelsPage
+            onNavigateAuth={handleNavigateAuth}
+            initialInviteCode={channelInviteCode}
+          />
         )}
         {currentPage === 'groups' && (
-          <Suspense fallback={<PageFallback />}>
-            <GroupsPage
-              onNavigateAuth={handleNavigateAuth}
-              initialInviteCode={groupInviteCode}
-            />
-          </Suspense>
+          <GroupsPage
+            onNavigateAuth={handleNavigateAuth}
+            initialInviteCode={groupInviteCode}
+          />
         )}
         {currentPage === 'graph' && (
-          <Suspense fallback={<PageFallback />}>
+          <Suspense fallback={
+            <div className="max-w-4xl mx-auto px-4 py-8">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 animate-pulse">
+                <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-2/3 mb-4"></div>
+                <div className="h-96 bg-gray-200 dark:bg-gray-700 rounded"></div>
+              </div>
+            </div>
+          }>
             <AnnotationsGraph />
           </Suspense>
         )}
@@ -185,13 +170,11 @@ function AppContent() {
 
 function App() {
   return (
-    <ErrorBoundary>
-      <ThemeProvider>
-        <AuthProvider>
-          <AppContent />
-        </AuthProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

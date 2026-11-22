@@ -386,26 +386,13 @@ async function startServer() {
     app.get('/admin.html', (_req, res) => {
       res.sendFile(path.join(distDir, 'admin.html'));
     });
-    app.use((req, res, next) => {
-      if (req.method !== 'GET' || req.path.startsWith('/api/')) {
-        next();
-        return;
-      }
+    app.get('*', (_req, res) => {
       res.sendFile(path.join(distDir, 'index.html'));
     });
   } else {
-    app.use((req, res, next) => {
-      if (req.path.startsWith('/node_modules/.vite/deps/')) {
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-      } else {
-        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-      }
-      next();
-    });
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true, hmr: false },
+      server: { middlewareMode: true },
       appType: 'mpa',
     });
     app.use(vite.middlewares);
