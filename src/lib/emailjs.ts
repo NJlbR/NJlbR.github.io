@@ -1,4 +1,4 @@
-import emailjs from '@emailjs/browser';
+import { send as sendEmailJs } from '@emailjs/browser';
 
 const getEmailJsConfig = () => {
   const serviceId = (import.meta.env.VITE_EMAILJS_SERVICE_ID || '').trim();
@@ -18,9 +18,13 @@ export function isEmailJsConfigured(): boolean {
 }
 
 export function generateOtpCode(): string {
-  const array = new Uint32Array(1);
-  window.crypto.getRandomValues(array);
-  return String(array[0] % 1000000).padStart(6, '0');
+  const cryptoObj = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
+  if (cryptoObj && typeof cryptoObj.getRandomValues === 'function') {
+    const array = new Uint32Array(1);
+    cryptoObj.getRandomValues(array);
+    return String(array[0] % 1000000).padStart(6, '0');
+  }
+  return String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
 }
 
 export interface SendRegistrationOtpParams {
@@ -67,7 +71,7 @@ export async function sendRegistrationOtpEmail({
     message: `Ваш одноразовый код подтверждения регистрации: ${code}. Код действителен ${expiresMinutes} минут.`,
   };
 
-  await emailjs.send(serviceId, templateId, templateParams, {
+  await sendEmailJs(serviceId, templateId, templateParams, {
     publicKey,
   });
 }

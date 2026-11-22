@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { supabase } from '../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { PostCard } from '../components/PostCard';
 import { Filters, FilterState } from '../components/Filters';
 import type { Database } from '../lib/database.types';
@@ -26,11 +26,21 @@ export function MainFeed() {
   });
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setFetchError(
+        'Не настроены переменные окружения Supabase (VITE_SUPABASE_URL и VITE_SUPABASE_ANON_KEY).'
+      );
+      setLoading(false);
+      return;
+    }
+
     fetchPosts();
     fetchAnnotations();
   }, []);
 
   async function fetchAnnotations() {
+    if (!isSupabaseConfigured) return;
+
     const { data, error } = await supabase
       .from('annotations')
       .select('id, term')
@@ -42,6 +52,11 @@ export function MainFeed() {
   }
 
   async function fetchPosts() {
+    if (!isSupabaseConfigured) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setFetchError(null);
 
