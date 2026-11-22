@@ -127,14 +127,6 @@ function createMockSupabaseClient(): SupabaseClientType {
         data: { user: null, session: null },
         error: new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.'),
       }),
-      verifyOtp: async () => ({
-        data: { user: null, session: null },
-        error: new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.'),
-      }),
-      resend: async () => ({
-        data: { user: null, session: null },
-        error: new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.'),
-      }),
       signOut: async () => ({ error: null }),
       updateUser: async () => ({
         data: { user: null },
