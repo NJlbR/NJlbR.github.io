@@ -7,15 +7,82 @@ interface AuthPageProps {
   onBack: () => void;
 }
 
-type OtpProvider = 'server' | 'supabase';
+type OtpProvider = 'server' | 'emailjs-client' | 'supabase';
 
 interface PendingOtpState {
   email: string;
   username: string;
   provider: OtpProvider;
+  salt?: string;
+  digest?: string;
+  expiresAt?: number;
+  attempts?: number;
 }
 
 const PENDING_OTP_STORAGE_KEY = 'auth_pending_otp';
+
+const sanitizeEnv = (val?: string) => (val || '').trim().replace(/^(['"])([\s\S]*)\1$/, '$2').trim();
+
+function getClientEmailJsConfig() {
+  const serviceId = sanitizeEnv(import.meta.env.VITE_EMAILJS_SERVICE_ID) || 'service_z85aznd';
+  const templateId = sanitizeEnv(import.meta.env.VITE_EMAILJS_TEMPLATE_ID) || 'template_lh5axtd';
+  const publicKey = sanitizeEnv(import.meta.env.VITE_EMAILJS_PUBLIC_KEY);
+  if (!publicKey) return null;
+  return { serviceId, templateId, publicKey };
+}
+
+function generateSixDigitOtp(): string {
+  const arr = new Uint32Array(1);
+  window.crypto.getRandomValues(arr);
+  return String(100000 + (arr[0] % 900000));
+}
+
+function generateSalt(): string {
+  const bytes = new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const encoded = new TextEncoder().encode(input);
+  const hashBuffer = await window.crypto.subtle.digest('SHA-256', encoded);
+  return Array.from(new Uint8Array(hashBuffer), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function sendClientEmailJsOtp(toEmail: string, username: string): Promise<{ salt: string; digest: string; expiresAt: number }> {
+  const cfg = getClientEmailJsConfig();
+  if (!cfg) {
+    throw new Error('EmailJS is not configured');
+  }
+  const code = generateSixDigitOtp();
+  const salt = generateSalt();
+  const digest = await sha256Hex(`${salt}:${toEmail}:${code}`);
+  const expiresAt = Date.now() + 10 * 60 * 1000;
+
+  const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      service_id: cfg.serviceId,
+      template_id: cfg.templateId,
+      user_id: cfg.publicKey,
+      template_params: {
+        to_email: toEmail,
+        email: toEmail,
+        username,
+        otp_code: code,
+        code,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `EmailJS HTTP ${response.status}`);
+  }
+
+  return { salt, digest, expiresAt };
+}
 
 function readPendingOtp(): PendingOtpState | null {
   try {
@@ -25,12 +92,16 @@ function readPendingOtp(): PendingOtpState | null {
     if (
       typeof parsed.email === 'string' &&
       typeof parsed.username === 'string' &&
-      (parsed.provider === 'server' || parsed.provider === 'supabase')
+      (parsed.provider === 'server' || parsed.provider === 'emailjs-client' || parsed.provider === 'supabase')
     ) {
       return {
         email: parsed.email,
         username: parsed.username,
         provider: parsed.provider,
+        salt: typeof parsed.salt === 'string' ? parsed.salt : undefined,
+        digest: typeof parsed.digest === 'string' ? parsed.digest : undefined,
+        expiresAt: typeof parsed.expiresAt === 'number' ? parsed.expiresAt : undefined,
+        attempts: typeof parsed.attempts === 'number' ? parsed.attempts : 0,
       };
     }
     return null;
@@ -284,7 +355,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
         return;
       }
 
-      // 1. Try server-side real email OTP sender (SMTP / Resend) first
+      // 1. Try server-side real email OTP sender (EmailJS Private / SMTP / Resend) first
       let serverFallback = false;
       try {
         const otpRes = await fetch('/api/auth/send-otp', {
@@ -335,7 +406,37 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
         return;
       }
 
-      // 2. Fallback to Supabase Auth signup OTP when backend SMTP/Resend is unavailable
+      // 2. Fallback to client EmailJS (for static GitHub Pages when VITE_EMAILJS_PUBLIC_KEY is set)
+      if (getClientEmailJsConfig()) {
+        try {
+          const challenge = await sendClientEmailJsOtp(normalizedEmail, normalizedUsername);
+          setPendingEmail(normalizedEmail);
+          setPendingUsername(normalizedUsername);
+          setOtpProvider('emailjs-client');
+          setOtpCode('');
+          setRegisterStep('otp');
+          setResendCooldown(60);
+          savePendingOtp({
+            email: normalizedEmail,
+            username: normalizedUsername,
+            provider: 'emailjs-client',
+            salt: challenge.salt,
+            digest: challenge.digest,
+            expiresAt: challenge.expiresAt,
+            attempts: 0,
+          });
+          setInfoMessage(`Одноразовый код отправлен на ${normalizedEmail}. Проверьте входящие и папку «Спам».`);
+          setLoading(false);
+          return;
+        } catch (emailJsErr) {
+          console.error('Client EmailJS error:', emailJsErr);
+          setError('Не удалось отправить код через EmailJS. Проверьте Public Key, Service ID и Template ID.');
+          setLoading(false);
+          return;
+        }
+      }
+
+      // 3. Fallback to Supabase Auth signup OTP when EmailJS/SMTP/Resend are unavailable
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: normalizedEmail,
         password,
@@ -351,7 +452,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
         if (authError.message.toLowerCase().includes('already registered')) {
           setError('Email уже зарегистрирован.');
         } else if (authError.message.toLowerCase().includes('rate limit')) {
-          setError('Превышен лимит отправки писем Supabase. Настройте свой SMTP/Resend или подождите.');
+          setError('Превышен лимит отправки писем Supabase. Настройте свой SMTP/EmailJS или подождите.');
         } else {
           console.error('Signup error:', authError);
           setError('Ошибка при регистрации. Проверьте настройки Supabase.');
@@ -392,7 +493,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
         setUsername('');
         setEmail('');
         setInfoMessage(
-          'Аккаунт создан без подтверждения почты: в Supabase отключен Confirm email и не настроен SMTP/Resend на сервере.'
+          'Аккаунт создан без подтверждения почты: не настроены ключи EmailJS/SMTP, а в Supabase отключен Confirm email.'
         );
         setLoading(false);
         return;
@@ -497,6 +598,71 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
 
           await supabase.auth.signOut();
         }
+      } else if (otpProvider === 'emailjs-client') {
+        const pending = readPendingOtp();
+        if (!pending || !pending.salt || !pending.digest || !pending.expiresAt) {
+          setError('Код не найден. Запросите новый код.');
+          setLoading(false);
+          return;
+        }
+
+        if (Date.now() > pending.expiresAt) {
+          setError('Срок действия кода истек. Запросите новый код.');
+          setLoading(false);
+          return;
+        }
+
+        const attempts = pending.attempts ?? 0;
+        if (attempts >= 5) {
+          setError('Превышено число попыток. Запросите новый код.');
+          setLoading(false);
+          return;
+        }
+
+        const candidateDigest = await sha256Hex(`${pending.salt}:${pendingEmail}:${cleanedToken}`);
+        if (candidateDigest !== pending.digest) {
+          savePendingOtp({ ...pending, attempts: attempts + 1 });
+          setError('Неверный код подтверждения.');
+          setLoading(false);
+          return;
+        }
+
+        if (!password) {
+          setError('Сессия формы сбросилась — вернитесь назад и введите пароль повторно.');
+          setLoading(false);
+          return;
+        }
+
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: pendingEmail,
+          password,
+          options: {
+            emailRedirectTo: window.location.origin,
+            data: { username: pendingUsername },
+          },
+        });
+
+        if (authError) {
+          setError(authError.message || 'Почта подтверждена, но не удалось создать аккаунт в Supabase.');
+          setLoading(false);
+          return;
+        }
+
+        if (authData.user) {
+          const profileError = await ensureUserProfile(
+            authData.user.id,
+            pendingUsername,
+            pendingEmail
+          );
+
+          if (profileError && profileError.code !== '23505') {
+            setError('Аккаунт создан, но возникла ошибка профиля. Попробуйте войти.');
+            setLoading(false);
+            return;
+          }
+        }
+
+        await supabase.auth.signOut();
       } else {
         const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
           email: pendingEmail,
@@ -574,6 +740,19 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
           setResendCooldown(60);
           setInfoMessage(`Новый одноразовый код отправлен на ${pendingEmail}.`);
         }
+      } else if (otpProvider === 'emailjs-client') {
+        const challenge = await sendClientEmailJsOtp(pendingEmail, pendingUsername);
+        savePendingOtp({
+          email: pendingEmail,
+          username: pendingUsername,
+          provider: 'emailjs-client',
+          salt: challenge.salt,
+          digest: challenge.digest,
+          expiresAt: challenge.expiresAt,
+          attempts: 0,
+        });
+        setResendCooldown(60);
+        setInfoMessage(`Новый одноразовый код отправлен на ${pendingEmail}.`);
       } else {
         const { error: resendError } = await supabase.auth.resend({
           type: 'signup',
