@@ -1,10 +1,23 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { LogIn, UserPlus, Key, ArrowLeft } from 'lucide-react';
+import { LogIn, UserPlus, Key, ArrowLeft, Mail, RefreshCw, CheckCircle2 } from 'lucide-react';
+import {
+  createOtpChallenge,
+  isEmailJsConfigured,
+  sendVerificationOtpEmail,
+  verifyOtpChallenge,
+  type OtpChallenge,
+} from '../utils/emailVerification';
 
 interface AuthPageProps {
   onAuthSuccess: () => void;
   onBack: () => void;
+}
+
+interface PendingRegistration {
+  email: string;
+  username: string;
+  password: string;
 }
 
 export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
@@ -17,7 +30,29 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
   const [newPassword, setNewPassword] = useState('');
   const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [otpChallenge, setOtpChallenge] = useState<OtpChallenge | null>(null);
+  const [pendingRegistration, setPendingRegistration] = useState<PendingRegistration | null>(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+
+    const timer = window.setInterval(() => {
+      setResendCooldown((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
+
+  const resetOtpFlow = () => {
+    setOtpChallenge(null);
+    setPendingRegistration(null);
+    setOtpCode('');
+    setResendCooldown(0);
+  };
 
   const validateUsername = (username: string): string | null => {
     if (username.length < 4) {
@@ -76,6 +111,9 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    setSuccessMessage('');
+
+    const normalizedEmail = email.trim().toLowerCase();
 
     const usernameError = validateUsername(username);
     if (usernameError) {
@@ -103,8 +141,13 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
       return;
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       setError('Неверный формат email');
+      return;
+    }
+
+    if (!isEmailJsConfigured()) {
+      setError('Сервис подтверждения почты не настроен. Обратитесь к администратору.');
       return;
     }
 
@@ -113,7 +156,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
     try {
       const { data: isBlocked } = await supabase.rpc('is_registration_blocked', {
         check_username: username,
-        check_email: email,
+        check_email: normalizedEmail,
       } as any);
 
       if (isBlocked) {
@@ -135,7 +178,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
 
       const { data: bannedEmail } = await supabase.rpc('is_banned', {
         check_username: null,
-        check_email: email,
+        check_email: normalizedEmail,
       } as any);
 
       if (bannedEmail) {
@@ -155,9 +198,58 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
         return;
       }
 
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
+      const { code, challenge } = await createOtpChallenge(normalizedEmail);
+      await sendVerificationOtpEmail({
+        email: normalizedEmail,
+        username,
+        code,
+      });
+
+      setPendingRegistration({
+        email: normalizedEmail,
+        username,
         password,
+      });
+      setOtpChallenge(challenge);
+      setOtpCode('');
+      setResendCooldown(60);
+    } catch (err: unknown) {
+      console.error('OTP send error:', err);
+      setError('Не удалось отправить код подтверждения на почту. Проверьте email и попробуйте позже.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVerifyOtpAndRegister(e: React.FormEvent) {
+    e.preventDefault();
+    if (!otpChallenge || !pendingRegistration) return;
+
+    setError('');
+    setLoading(true);
+
+    try {
+      const verification = await verifyOtpChallenge(otpChallenge, otpCode);
+      if (!verification.valid) {
+        if (verification.reason === 'expired') {
+          setError('Срок действия кода истек. Запросите новый код.');
+        } else if (verification.reason === 'max_attempts') {
+          setError('Превышено количество попыток. Запросите новый код.');
+        } else {
+          setOtpChallenge((prev) => (prev ? { ...prev, attempts: prev.attempts + 1 } : null));
+          if (verification.remainingAttempts === 0) {
+            setError('Превышено количество попыток. Запросите новый код.');
+          } else {
+            setError(`Неверный код подтверждения. Осталось попыток: ${verification.remainingAttempts}`);
+          }
+        }
+        setLoading(false);
+        return;
+      }
+
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: pendingRegistration.email,
+        password: pendingRegistration.password,
         options: {
           emailRedirectTo: window.location.origin,
         },
@@ -179,8 +271,8 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
           .from('user_profiles')
           .insert({
             id: authData.user.id,
-            username: username,
-            email: email,
+            username: pendingRegistration.username,
+            email: pendingRegistration.email,
           });
 
         if (profileError) {
@@ -199,18 +291,42 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
         // Выходим из аккаунта после успешной регистрации
         await supabase.auth.signOut();
 
-        alert('Регистрация успешна! Администратор должен одобрить вашу учетную запись перед тем, как вы сможете оставлять комментарии.');
-
+        resetOtpFlow();
         setMode('login');
         setPassword('');
         setPasswordConfirm('');
         setUsername('');
         setEmail('');
-        setLoading(false);
+        setSuccessMessage('Почта подтверждена и регистрация успешна! Администратор должен одобрить вашу учетную запись перед тем, как вы сможете оставлять комментарии.');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Registration error:', err);
       setError('Ошибка при регистрации. Попробуйте позже.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResendOtp() {
+    if (!pendingRegistration || resendCooldown > 0 || loading) return;
+
+    setError('');
+    setLoading(true);
+
+    try {
+      const { code, challenge } = await createOtpChallenge(pendingRegistration.email);
+      await sendVerificationOtpEmail({
+        email: pendingRegistration.email,
+        username: pendingRegistration.username,
+        code,
+      });
+
+      setOtpChallenge(challenge);
+      setOtpCode('');
+      setResendCooldown(60);
+    } catch (err: unknown) {
+      console.error('OTP resend error:', err);
+      setError('Не удалось повторно отправить код. Попробуйте позже.');
     } finally {
       setLoading(false);
     }
@@ -298,6 +414,8 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
             onClick={() => {
               setMode('login');
               setError('');
+              setSuccessMessage('');
+              resetOtpFlow();
             }}
             className={`flex-1 py-2 rounded-lg transition-colors ${
               mode === 'login'
@@ -314,6 +432,8 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
             onClick={() => {
               setMode('register');
               setError('');
+              setSuccessMessage('');
+              resetOtpFlow();
             }}
             className={`flex-1 py-2 rounded-lg transition-colors ${
               mode === 'register'
@@ -330,6 +450,8 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
             onClick={() => {
               setMode('change-password');
               setError('');
+              setSuccessMessage('');
+              resetOtpFlow();
             }}
             className={`flex-1 py-2 rounded-lg transition-colors ${
               mode === 'change-password'
@@ -346,6 +468,13 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
 
         {mode === 'login' && (
           <form onSubmit={handleLogin} className="space-y-4">
+            {successMessage && (
+              <div className="p-3 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-lg text-sm flex items-start gap-2">
+                <CheckCircle2 size={18} className="shrink-0 mt-0.5" />
+                <span>{successMessage}</span>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Email
@@ -388,7 +517,80 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
           </form>
         )}
 
-        {mode === 'register' && (
+        {mode === 'register' && otpChallenge && pendingRegistration && (
+          <form onSubmit={handleVerifyOtpAndRegister} className="space-y-4">
+            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-800 dark:text-blue-200 flex items-start gap-2.5">
+              <Mail size={18} className="shrink-0 mt-0.5" />
+              <div>
+                <p>
+                  Мы отправили одноразовый 6-значный код на{' '}
+                  <span className="font-semibold break-all">{pendingRegistration.email}</span>.
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                  Код действителен 10 минут. Проверьте папку «Спам», если письмо не пришло.
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Код подтверждения из письма
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-xl tracking-[0.4em] font-mono"
+                required
+                autoFocus
+              />
+            </div>
+
+            {error && (
+              <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading || otpCode.length !== 6}
+              className="w-full py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg transition-colors"
+            >
+              {loading ? 'Проверка и регистрация...' : 'Подтвердить и зарегистрироваться'}
+            </button>
+
+            <div className="flex items-center justify-between gap-2 pt-1 text-sm">
+              <button
+                type="button"
+                onClick={handleResendOtp}
+                disabled={loading || resendCooldown > 0}
+                className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 disabled:text-gray-400 dark:text-blue-400 dark:hover:text-blue-300 dark:disabled:text-gray-500 transition-colors"
+              >
+                <RefreshCw size={14} />
+                {resendCooldown > 0 ? `Отправить снова (${resendCooldown}с)` : 'Отправить код снова'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  resetOtpFlow();
+                  setError('');
+                }}
+                disabled={loading}
+                className="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+              >
+                Изменить данные
+              </button>
+            </div>
+          </form>
+        )}
+
+        {mode === 'register' && (!otpChallenge || !pendingRegistration) && (
           <form onSubmit={handleRegister} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -460,7 +662,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
               disabled={loading}
               className="w-full py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg transition-colors"
             >
-              {loading ? 'Регистрация...' : 'Зарегистрироваться'}
+              {loading ? 'Отправка кода...' : 'Зарегистрироваться'}
             </button>
           </form>
         )}

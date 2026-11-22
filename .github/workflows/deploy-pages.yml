@@ -32,7 +32,15 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run build
+        env:
+          GH_EMAILJS_SERVICE_ID: ${{ secrets.VITE_EMAILJS_SERVICE_ID || secrets.EMAILJS_SERVICE_ID }}
+          GH_EMAILJS_TEMPLATE_ID: ${{ secrets.VITE_EMAILJS_TEMPLATE_ID || secrets.EMAILJS_TEMPLATE_ID }}
+          GH_EMAILJS_PUBLIC_KEY: ${{ secrets.VITE_EMAILJS_PUBLIC_KEY || secrets.EMAILJS_PUBLIC_KEY || secrets.VITE_EMAILJS_USER_ID || secrets.EMAILJS_USER_ID }}
+        run: |
+          if [ -n "$GH_EMAILJS_SERVICE_ID" ]; then export VITE_EMAILJS_SERVICE_ID="$GH_EMAILJS_SERVICE_ID"; fi
+          if [ -n "$GH_EMAILJS_TEMPLATE_ID" ]; then export VITE_EMAILJS_TEMPLATE_ID="$GH_EMAILJS_TEMPLATE_ID"; fi
+          if [ -n "$GH_EMAILJS_PUBLIC_KEY" ]; then export VITE_EMAILJS_PUBLIC_KEY="$GH_EMAILJS_PUBLIC_KEY"; fi
+          npm run build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
