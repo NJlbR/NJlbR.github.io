@@ -3,24 +3,11 @@ import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 
 // https://vitejs.dev/config/
-export default defineConfig(({ command }) => ({
+export default defineConfig({
   plugins: [react()],
-  base: command === 'build' ? './' : '/',
-  server: {
-    host: '0.0.0.0',
-    port: 3000,
-    allowedHosts: true,
-  },
+  base: './',
   optimizeDeps: {
-    include: [
-      'react',
-      'react-dom',
-      'react-dom/client',
-      'react/jsx-dev-runtime',
-      'react/jsx-runtime',
-      'lucide-react',
-      '@supabase/supabase-js',
-    ],
+    exclude: ['lucide-react'],
   },
   build: {
     rollupOptions: {
@@ -30,4 +17,4 @@ export default defineConfig(({ command }) => ({
       },
     },
   },
-}));
+});
