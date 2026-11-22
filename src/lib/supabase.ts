@@ -1,8 +1,24 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const sanitizeEnvValue = (value?: string): string => {
+  if (!value) return '';
+  return value.trim().replace(/^(['"])([\s\S]*)\1$/, '$2').trim();
+};
+
+const rawSupabaseUrl = sanitizeEnvValue(import.meta.env.VITE_SUPABASE_URL).replace(/\/+$/, '');
+const supabaseAnonKey = sanitizeEnvValue(import.meta.env.VITE_SUPABASE_ANON_KEY);
+
+const isValidHttpUrl = (url: string): boolean => {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+};
+
+const supabaseUrl = isValidHttpUrl(rawSupabaseUrl) ? rawSupabaseUrl : '';
 
 const getProjectRef = (url: string) => {
   try {
@@ -108,6 +124,14 @@ function createMockSupabaseClient(): SupabaseClientType {
         error: new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.'),
       }),
       signUp: async () => ({
+        data: { user: null, session: null },
+        error: new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.'),
+      }),
+      verifyOtp: async () => ({
+        data: { user: null, session: null },
+        error: new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.'),
+      }),
+      resend: async () => ({
         data: { user: null, session: null },
         error: new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.'),
       }),
