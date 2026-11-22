@@ -9,11 +9,16 @@ export function detectAnnotations(
   text: string,
   annotations: { id: string; term: string }[]
 ): AnnotationMatch[] {
+  if (!text || !Array.isArray(annotations) || annotations.length === 0) {
+    return [];
+  }
   const matches: AnnotationMatch[] = [];
   const lowerText = text.toLowerCase();
 
   annotations.forEach((annotation) => {
+    if (!annotation?.term) return;
     const lowerTerm = annotation.term.toLowerCase();
+    if (!lowerTerm) return;
     let startIndex = 0;
 
     while (true) {

@@ -19,10 +19,9 @@ const SESSION_TIMEOUT_MS = 3000;
 function readCachedSession(): Session | null {
   if (typeof window === 'undefined') return null;
 
-  const rawSession = window.localStorage.getItem(supabaseAuthStorageKey);
-  if (!rawSession) return null;
-
   try {
+    const rawSession = window.localStorage.getItem(supabaseAuthStorageKey);
+    if (!rawSession) return null;
     const session = JSON.parse(rawSession) as Session | null;
     return session?.user ? session : null;
   } catch {
