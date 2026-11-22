@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { PostCard } from '../components/PostCard';
 import { Filters, FilterState } from '../components/Filters';
 import type { Database } from '../lib/database.types';
@@ -16,7 +16,6 @@ export function MainFeed() {
   const [posts, setPosts] = useState<PostWithRelations[]>([]);
   const [allAnnotations, setAllAnnotations] = useState<{ id: string; term: string }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     contentType: '',
     hashtag: '',
@@ -26,40 +25,22 @@ export function MainFeed() {
   });
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
-      setFetchError(
-        'Не настроены переменные окружения Supabase (VITE_SUPABASE_URL и VITE_SUPABASE_ANON_KEY).'
-      );
-      setLoading(false);
-      return;
-    }
-
     fetchPosts();
     fetchAnnotations();
   }, []);
 
   async function fetchAnnotations() {
-    if (!isSupabaseConfigured) return;
-
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('annotations')
       .select('id, term')
       .order('term');
 
-    if (!error && data) {
+    if (data) {
       setAllAnnotations(data);
     }
   }
 
   async function fetchPosts() {
-    if (!isSupabaseConfigured) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setFetchError(null);
-
     const { data: postsData, error } = await supabase
       .from('posts')
       .select(`
@@ -85,13 +66,7 @@ export function MainFeed() {
       .order('created_at', { ascending: false });
 
     if (error) {
-      if (error.message?.toLowerCase().includes('unregistered api key')) {
-        setFetchError(
-          'Ошибка подключения к Supabase: указан недействительный ключ API (VITE_SUPABASE_ANON_KEY). Проверьте настройки переменных окружения проекта.'
-        );
-      } else {
-        setFetchError(`Не удалось загрузить посты: ${error.message}`);
-      }
+      console.error('Error fetching posts:', error);
       setLoading(false);
       return;
     }
@@ -165,20 +140,7 @@ export function MainFeed() {
     <div className="max-w-4xl mx-auto px-4 py-8">
       <Filters onFilterChange={setFilters} />
 
-      {fetchError ? (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 text-center space-y-3">
-          <p className="text-red-700 dark:text-red-300 text-base font-medium">
-            {fetchError}
-          </p>
-          <button
-            type="button"
-            onClick={fetchPosts}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm transition-colors"
-          >
-            Повторить попытку
-          </button>
-        </div>
-      ) : filteredPosts.length === 0 ? (
+      {filteredPosts.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-gray-600 dark:text-gray-400 text-lg">
             {posts.length === 0 ? 'Постов пока нет. Добавьте первый пост в админ-панели!' : 'Посты не найдены с выбранными фильтрами.'}

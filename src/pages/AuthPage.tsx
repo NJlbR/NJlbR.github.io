@@ -1,39 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import {
-  generateOtpCode,
-  isEmailJsConfigured,
-  sendRegistrationOtpEmail,
-} from '../lib/emailjs';
-import {
-  LogIn,
-  UserPlus,
-  Key,
-  ArrowLeft,
-  MailCheck,
-  RefreshCw,
-  CheckCircle2,
-} from 'lucide-react';
+import { LogIn, UserPlus, Key, ArrowLeft } from 'lucide-react';
 
 interface AuthPageProps {
   onAuthSuccess: () => void;
   onBack: () => void;
 }
 
-interface PendingOtpState {
-  email: string;
-  code: string;
-  expiresAt: number;
-  attemptsLeft: number;
-}
-
-const OTP_EXPIRY_MINUTES = 10;
-const OTP_MAX_ATTEMPTS = 5;
-const OTP_RESEND_COOLDOWN_SECONDS = 60;
-
 export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
   const [mode, setMode] = useState<'login' | 'register' | 'change-password'>('login');
-  const [registerStep, setRegisterStep] = useState<'form' | 'verify-otp'>('form');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
@@ -41,71 +16,21 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
-  const [otpInput, setOtpInput] = useState('');
-  const [pendingOtp, setPendingOtp] = useState<PendingOtpState | null>(null);
-  const [resendCooldown, setResendCooldown] = useState(0);
-  const [otpSecondsLeft, setOtpSecondsLeft] = useState(0);
-  const [otpInfoMessage, setOtpInfoMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-
-    const timer = window.setInterval(() => {
-      setResendCooldown((prev) => (prev > 1 ? prev - 1 : 0));
-    }, 1000);
-
-    return () => window.clearInterval(timer);
-  }, [resendCooldown]);
-
-  useEffect(() => {
-    if (registerStep !== 'verify-otp' || !pendingOtp) {
-      setOtpSecondsLeft(0);
-      return;
-    }
-
-    const updateRemaining = () => {
-      const remaining = Math.max(
-        0,
-        Math.ceil((pendingOtp.expiresAt - Date.now()) / 1000)
-      );
-      setOtpSecondsLeft(remaining);
-    };
-
-    updateRemaining();
-    const timer = window.setInterval(updateRemaining, 1000);
-    return () => window.clearInterval(timer);
-  }, [registerStep, pendingOtp]);
-
-  const formatSeconds = (totalSeconds: number) => {
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-  };
-
-  const resetRegisterVerification = () => {
-    setRegisterStep('form');
-    setPendingOtp(null);
-    setOtpInput('');
-    setResendCooldown(0);
-    setOtpSecondsLeft(0);
-    setOtpInfoMessage('');
-  };
-
-  const validateUsername = (value: string): string | null => {
-    if (value.length < 4) {
+  const validateUsername = (username: string): string | null => {
+    if (username.length < 4) {
       return 'Username должен быть не менее 4 символов';
     }
-    if (value.length > 30) {
+    if (username.length > 30) {
       return 'Username не может быть длиннее 30 символов';
     }
-    if (!/^[a-zA-Z0-9_]+$/.test(value)) {
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
       return 'Username может содержать только латиницу, цифры и подчеркивания';
     }
     const reservedNames = ['admin', 'administrator', 'root', 'system', 'moderator', 'support'];
-    if (reservedNames.includes(value.toLowerCase())) {
+    if (reservedNames.includes(username.toLowerCase())) {
       return 'Это имя зарезервировано';
     }
     return null;
@@ -114,12 +39,11 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    setSuccessMessage('');
     setLoading(true);
 
     try {
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email,
         password,
       });
 
@@ -149,16 +73,11 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
     }
   }
 
-  async function handleStartRegister(e: React.FormEvent) {
+  async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    setSuccessMessage('');
-    setOtpInfoMessage('');
 
-    const normalizedUsername = username.trim().toLowerCase();
-    const normalizedEmail = email.trim().toLowerCase();
-
-    const usernameError = validateUsername(normalizedUsername);
+    const usernameError = validateUsername(username);
     if (usernameError) {
       setError(usernameError);
       return;
@@ -184,13 +103,8 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
       return;
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setError('Неверный формат email');
-      return;
-    }
-
-    if (!isEmailJsConfigured()) {
-      setError('Отправка кода подтверждения не настроена (отсутствуют ключи EmailJS).');
       return;
     }
 
@@ -198,191 +112,65 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
 
     try {
       const { data: isBlocked } = await supabase.rpc('is_registration_blocked', {
-        check_username: normalizedUsername,
-        check_email: normalizedEmail,
+        check_username: username,
+        check_email: email,
       } as any);
 
       if (isBlocked) {
         setError('Регистрация временно заблокирована. Попробуйте позже.');
+        setLoading(false);
         return;
       }
 
       const { data: bannedUsername } = await supabase.rpc('is_banned', {
-        check_username: normalizedUsername,
+        check_username: username,
         check_email: null,
       } as any);
 
       if (bannedUsername) {
         setError('Этот username недоступен.');
+        setLoading(false);
         return;
       }
 
       const { data: bannedEmail } = await supabase.rpc('is_banned', {
         check_username: null,
-        check_email: normalizedEmail,
+        check_email: email,
       } as any);
 
       if (bannedEmail) {
         setError('Этот email недоступен.');
+        setLoading(false);
         return;
       }
 
-      const { data: isTaken } = await (supabase.rpc as any)('is_username_taken', {
-        check_username: normalizedUsername,
-      });
+      // Проверяем занят ли username
+      const { data: isTaken } = await supabase.rpc('is_username_taken', {
+        check_username: username,
+      } as any);
 
       if (isTaken) {
         setError('Этот username уже занят.');
+        setLoading(false);
         return;
       }
 
-      const code = generateOtpCode();
-      await sendRegistrationOtpEmail({
-        email: normalizedEmail,
-        username: normalizedUsername,
-        code,
-        expiresMinutes: OTP_EXPIRY_MINUTES,
-      });
-
-      setEmail(normalizedEmail);
-      setUsername(normalizedUsername);
-      setPendingOtp({
-        email: normalizedEmail,
-        code,
-        expiresAt: Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
-        attemptsLeft: OTP_MAX_ATTEMPTS,
-      });
-      setOtpInput('');
-      setResendCooldown(OTP_RESEND_COOLDOWN_SECONDS);
-      setRegisterStep('verify-otp');
-    } catch (err: any) {
-      console.error('OTP send error:', err);
-      setError('Не удалось отправить код подтверждения на почту. Проверьте адрес и попробуйте позже.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleResendOtp() {
-    if (resendCooldown > 0 || loading || !pendingOtp) return;
-
-    setError('');
-    setOtpInfoMessage('');
-
-    if (!isEmailJsConfigured()) {
-      setError('Отправка кода подтверждения не настроена (отсутствуют ключи EmailJS).');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const newCode = generateOtpCode();
-      await sendRegistrationOtpEmail({
-        email: pendingOtp.email,
-        username: username.trim().toLowerCase(),
-        code: newCode,
-        expiresMinutes: OTP_EXPIRY_MINUTES,
-      });
-
-      setPendingOtp({
-        email: pendingOtp.email,
-        code: newCode,
-        expiresAt: Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
-        attemptsLeft: OTP_MAX_ATTEMPTS,
-      });
-      setOtpInput('');
-      setResendCooldown(OTP_RESEND_COOLDOWN_SECONDS);
-      setOtpInfoMessage('Новый код подтверждения отправлен на вашу почту.');
-    } catch (err: any) {
-      console.error('OTP resend error:', err);
-      setError('Не удалось повторно отправить код. Попробуйте позже.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleVerifyOtpAndRegister(e: React.FormEvent) {
-    e.preventDefault();
-    setError('');
-    setOtpInfoMessage('');
-
-    if (!pendingOtp) {
-      setError('Сессия подтверждения не найдена. Запросите код заново.');
-      setRegisterStep('form');
-      return;
-    }
-
-    if (Date.now() > pendingOtp.expiresAt) {
-      setError('Срок действия кода истёк. Запросите новый код.');
-      return;
-    }
-
-    if (pendingOtp.attemptsLeft <= 0 || !pendingOtp.code) {
-      setError('Превышено количество попыток. Запросите новый код.');
-      return;
-    }
-
-    const sanitizedCode = otpInput.replace(/\D/g, '');
-    if (sanitizedCode.length !== 6) {
-      setError('Введите 6-значный код из письма.');
-      return;
-    }
-
-    if (sanitizedCode !== pendingOtp.code) {
-      const nextAttempts = pendingOtp.attemptsLeft - 1;
-      if (nextAttempts <= 0) {
-        setPendingOtp({
-          ...pendingOtp,
-          code: '',
-          attemptsLeft: 0,
-        });
-        setError('Превышено количество попыток. Запросите новый код.');
-      } else {
-        setPendingOtp({
-          ...pendingOtp,
-          attemptsLeft: nextAttempts,
-        });
-        setError(`Неверный код. Осталось попыток: ${nextAttempts}`);
-      }
-      return;
-    }
-
-    setLoading(true);
-    const verifiedEmail = pendingOtp.email;
-    const normalizedUsername = username.trim().toLowerCase();
-
-    try {
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: verifiedEmail,
+        email,
         password,
         options: {
           emailRedirectTo: window.location.origin,
-          data: {
-            email_verified_via_otp: true,
-            username: normalizedUsername,
-          },
         },
       });
 
       if (authError) {
-        if (authError.message.toLowerCase().includes('already registered')) {
+        if (authError.message.includes('already registered')) {
           setError('Email уже зарегистрирован.');
-          resetRegisterVerification();
         } else {
           console.error('Signup error:', authError);
           setError('Ошибка при регистрации. Попробуйте позже.');
         }
-        return;
-      }
-
-      if (
-        authData.user &&
-        Array.isArray(authData.user.identities) &&
-        authData.user.identities.length === 0
-      ) {
-        setError('Email уже зарегистрирован.');
-        resetRegisterVerification();
+        setLoading(false);
         return;
       }
 
@@ -391,33 +179,34 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
           .from('user_profiles')
           .insert({
             id: authData.user.id,
-            username: normalizedUsername,
-            email: verifiedEmail,
+            username: username,
+            email: email,
           });
 
         if (profileError) {
           console.error('Profile creation error:', profileError);
 
+          // Проверяем код ошибки для более точного сообщения
           if (profileError.code === '23505') {
-            setError('Этот username или email уже занят.');
+            setError('Этот username уже занят.');
           } else {
             setError('Ошибка при создании профиля. Попробуйте позже.');
           }
+          setLoading(false);
           return;
         }
 
-        // Одноразовый код использован — очищаем состояние и выходим из временной сессии до одобрения админом
-        resetRegisterVerification();
+        // Выходим из аккаунта после успешной регистрации
         await supabase.auth.signOut();
 
-        setSuccessMessage(
-          'Почта подтверждена, регистрация завершена! Администратор должен одобрить вашу учетную запись перед тем, как вы сможете оставлять комментарии.'
-        );
+        alert('Регистрация успешна! Администратор должен одобрить вашу учетную запись перед тем, как вы сможете оставлять комментарии.');
+
         setMode('login');
         setPassword('');
         setPasswordConfirm('');
         setUsername('');
         setEmail('');
+        setLoading(false);
       }
     } catch (err: any) {
       console.error('Registration error:', err);
@@ -430,7 +219,6 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    setSuccessMessage('');
 
     if (newPassword !== newPasswordConfirm) {
       setError('Новые пароли не совпадают');
@@ -451,7 +239,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
 
     try {
       const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email,
         password: oldPassword,
       });
 
@@ -475,7 +263,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
 
       await supabase.auth.signOut();
 
-      setSuccessMessage('Пароль успешно изменен! Войдите с новым паролем.');
+      alert('Пароль успешно изменен! Войдите с новым паролем.');
       setEmail('');
       setOldPassword('');
       setNewPassword('');
@@ -502,23 +290,14 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
         </button>
 
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6 text-center">
-          {mode === 'login'
-            ? 'Вход'
-            : mode === 'register'
-              ? registerStep === 'verify-otp'
-                ? 'Подтверждение почты'
-                : 'Регистрация'
-              : 'Смена пароля'}
+          {mode === 'login' ? 'Вход' : mode === 'register' ? 'Регистрация' : 'Смена пароля'}
         </h1>
 
         <div className="flex gap-2 mb-6">
           <button
-            type="button"
             onClick={() => {
               setMode('login');
               setError('');
-              setSuccessMessage('');
-              resetRegisterVerification();
             }}
             className={`flex-1 py-2 rounded-lg transition-colors ${
               mode === 'login'
@@ -532,11 +311,9 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
             </div>
           </button>
           <button
-            type="button"
             onClick={() => {
               setMode('register');
               setError('');
-              setSuccessMessage('');
             }}
             className={`flex-1 py-2 rounded-lg transition-colors ${
               mode === 'register'
@@ -550,12 +327,9 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
             </div>
           </button>
           <button
-            type="button"
             onClick={() => {
               setMode('change-password');
               setError('');
-              setSuccessMessage('');
-              resetRegisterVerification();
             }}
             className={`flex-1 py-2 rounded-lg transition-colors ${
               mode === 'change-password'
@@ -569,13 +343,6 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
             </div>
           </button>
         </div>
-
-        {successMessage && mode === 'login' && (
-          <div className="mb-4 p-3 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 rounded-lg text-sm flex items-start gap-2">
-            <CheckCircle2 size={18} className="shrink-0 mt-0.5" />
-            <span>{successMessage}</span>
-          </div>
-        )}
 
         {mode === 'login' && (
           <form onSubmit={handleLogin} className="space-y-4">
@@ -621,8 +388,8 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
           </form>
         )}
 
-        {mode === 'register' && registerStep === 'form' && (
-          <form onSubmit={handleStartRegister} className="space-y-4">
+        {mode === 'register' && (
+          <form onSubmit={handleRegister} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Email
@@ -633,7 +400,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 required
-                autoComplete="email"
+                autoComplete="username"
               />
             </div>
 
@@ -678,7 +445,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
                 onChange={(e) => setPasswordConfirm(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 required
-                minLength={12}
+                minLength={6}
               />
             </div>
 
@@ -693,94 +460,8 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
               disabled={loading}
               className="w-full py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg transition-colors"
             >
-              {loading ? 'Отправка кода...' : 'Отправить код на почту'}
+              {loading ? 'Регистрация...' : 'Зарегистрироваться'}
             </button>
-          </form>
-        )}
-
-        {mode === 'register' && registerStep === 'verify-otp' && pendingOtp && (
-          <form onSubmit={handleVerifyOtpAndRegister} className="space-y-4">
-            <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-sm text-blue-900 dark:text-blue-200 space-y-1">
-              <div className="flex items-center gap-2 font-medium">
-                <MailCheck size={18} className="shrink-0" />
-                <span>Код отправлен на почту</span>
-              </div>
-              <p className="break-all font-semibold">{pendingOtp.email}</p>
-              <p className="text-xs text-blue-700 dark:text-blue-300">
-                Введите одноразовый 6-значный код из письма. Если письма нет, проверьте папку «Спам».
-              </p>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Одноразовый код
-                </label>
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {otpSecondsLeft > 0
-                    ? `Действителен: ${formatSeconds(otpSecondsLeft)}`
-                    : 'Срок действия истёк'}
-                </span>
-              </div>
-              <input
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={6}
-                value={otpInput}
-                onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="000000"
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-2xl font-mono tracking-[0.4em]"
-                required
-                autoFocus
-              />
-            </div>
-
-            {otpInfoMessage && (
-              <div className="p-3 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-lg text-sm">
-                {otpInfoMessage}
-              </div>
-            )}
-
-            {error && (
-              <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading || otpInput.length !== 6 || otpSecondsLeft <= 0}
-              className="w-full py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg transition-colors"
-            >
-              {loading ? 'Регистрация...' : 'Подтвердить и зарегистрироваться'}
-            </button>
-
-            <div className="flex items-center justify-between gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  resetRegisterVerification();
-                  setError('');
-                }}
-                disabled={loading}
-                className="text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors"
-              >
-                Изменить данные
-              </button>
-
-              <button
-                type="button"
-                onClick={handleResendOtp}
-                disabled={loading || resendCooldown > 0}
-                className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 disabled:text-gray-400 dark:text-blue-400 dark:disabled:text-gray-500 transition-colors"
-              >
-                <RefreshCw size={14} />
-                {resendCooldown > 0
-                  ? `Отправить повторно (${resendCooldown} с)`
-                  : 'Отправить код повторно'}
-              </button>
-            </div>
           </form>
         )}
 
@@ -836,7 +517,7 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
                 onChange={(e) => setNewPasswordConfirm(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 required
-                minLength={12}
+                minLength={6}
               />
             </div>
 

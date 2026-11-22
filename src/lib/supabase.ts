@@ -1,15 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
 
-const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
-const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
-
-if (!isSupabaseConfigured) {
-  console.warn(
-    'Missing Supabase environment variables (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY).'
-  );
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing Supabase environment variables');
 }
 
 const getProjectRef = (url: string) => {
@@ -20,12 +16,9 @@ const getProjectRef = (url: string) => {
   }
 };
 
-const resolvedUrl = supabaseUrl || 'https://placeholder.supabase.co';
-const resolvedAnonKey = supabaseAnonKey || 'placeholder-anon-key';
+export const supabaseAuthStorageKey = `sb-${getProjectRef(supabaseUrl)}-auth-token`;
 
-export const supabaseAuthStorageKey = `sb-${getProjectRef(resolvedUrl)}-auth-token`;
-
-export const supabase = createClient<Database>(resolvedUrl, resolvedAnonKey, {
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     storageKey: supabaseAuthStorageKey,
     persistSession: true,

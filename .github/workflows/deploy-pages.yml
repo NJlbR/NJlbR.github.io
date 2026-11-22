@@ -29,27 +29,10 @@ jobs:
         uses: actions/configure-pages@v6
 
       - name: Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+        run: npm ci
 
       - name: Build
-        env:
-          SECRET_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || secrets.SUPABASE_URL }}
-          SECRET_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
-          SECRET_EMAILJS_SERVICE_ID: ${{ secrets.VITE_EMAILJS_SERVICE_ID || secrets.EMAILJS_SERVICE_ID }}
-          SECRET_EMAILJS_TEMPLATE_ID: ${{ secrets.VITE_EMAILJS_TEMPLATE_ID || secrets.EMAILJS_TEMPLATE_ID }}
-          SECRET_EMAILJS_PUBLIC_KEY: ${{ secrets.VITE_EMAILJS_PUBLIC_KEY || secrets.EMAILJS_PUBLIC_KEY || secrets.VITE_EMAILJS_USER_ID || secrets.EMAILJS_USER_ID }}
-        run: |
-          [ -n "$SECRET_SUPABASE_URL" ] && export VITE_SUPABASE_URL="$SECRET_SUPABASE_URL"
-          [ -n "$SECRET_SUPABASE_ANON_KEY" ] && export VITE_SUPABASE_ANON_KEY="$SECRET_SUPABASE_ANON_KEY"
-          [ -n "$SECRET_EMAILJS_SERVICE_ID" ] && export VITE_EMAILJS_SERVICE_ID="$SECRET_EMAILJS_SERVICE_ID"
-          [ -n "$SECRET_EMAILJS_TEMPLATE_ID" ] && export VITE_EMAILJS_TEMPLATE_ID="$SECRET_EMAILJS_TEMPLATE_ID"
-          [ -n "$SECRET_EMAILJS_PUBLIC_KEY" ] && export VITE_EMAILJS_PUBLIC_KEY="$SECRET_EMAILJS_PUBLIC_KEY"
-          npm run build
+        run: npm run build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
