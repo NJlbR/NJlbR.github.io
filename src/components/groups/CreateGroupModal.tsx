@@ -36,17 +36,40 @@ export function CreateGroupModal({ onClose, onGroupCreated }: CreateGroupModalPr
     }
 
     try {
-      const { data } = await supabase.rpc('is_group_username_available', {
+      let isAvailable = true;
+      const { data, error } = await supabase.rpc('is_group_username_available', {
         username_to_check: value,
       } as any);
 
-      if (data) {
+      if (error || data === null || data === undefined) {
+        const { count } = await supabase
+          .from('groups')
+          .select('id', { count: 'exact', head: true })
+          .ilike('username', value);
+        isAvailable = count === 0;
+      } else {
+        isAvailable = Boolean(data);
+      }
+
+      if (isAvailable) {
         setUsernameValidation({ valid: true, message: 'Доступен' });
       } else {
         setUsernameValidation({ valid: false, message: 'Уже занят' });
       }
     } catch (err) {
-      setUsernameValidation({ valid: false, message: 'Ошибка проверки' });
+      try {
+        const { count } = await supabase
+          .from('groups')
+          .select('id', { count: 'exact', head: true })
+          .ilike('username', value);
+        if (count === 0) {
+          setUsernameValidation({ valid: true, message: 'Доступен' });
+        } else {
+          setUsernameValidation({ valid: false, message: 'Уже занят' });
+        }
+      } catch {
+        setUsernameValidation({ valid: false, message: 'Ошибка проверки' });
+      }
     }
   };
 

@@ -322,11 +322,22 @@ export function GroupInfo({ groupId, onClose, onLeaveGroup }: GroupInfoProps) {
             return;
           }
 
-          const { data: available } = await supabase.rpc('is_group_username_available', {
+          let isAvailable = true;
+          const { data: available, error: availError } = await supabase.rpc('is_group_username_available', {
             username_to_check: normalized,
           } as any);
 
-          if (!available) {
+          if (availError || available === null || available === undefined) {
+            const { count } = await supabase
+              .from('groups')
+              .select('id', { count: 'exact', head: true })
+              .ilike('username', normalized);
+            isAvailable = count === 0;
+          } else {
+            isAvailable = Boolean(available);
+          }
+
+          if (!isAvailable) {
             alert('Этот юзернейм уже занят');
             setUpdatingType(false);
             return;
