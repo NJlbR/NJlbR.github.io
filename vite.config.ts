@@ -12,7 +12,7 @@ export default defineConfig({
     allowedHosts: true,
   },
   optimizeDeps: {
-    exclude: ['lucide-react'],
+    include: ['lucide-react', '@supabase/supabase-js'],
   },
   build: {
     rollupOptions: {

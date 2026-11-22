@@ -99,8 +99,12 @@ export function MainFeed() {
     if (postsData) {
       const postsWithRelations = (postsData as any[]).map((post: any) => ({
         ...post,
-        hashtags: post.post_hashtags?.map((h: any) => ({ name: h.hashtags.name })) || [],
-        persons: post.post_persons?.map((p: any) => ({ name: p.persons.name })) || [],
+        hashtags: (post.post_hashtags || [])
+          .map((h: any) => (h?.hashtags?.name ? { name: h.hashtags.name } : null))
+          .filter(Boolean),
+        persons: (post.post_persons || [])
+          .map((p: any) => (p?.persons?.name ? { name: p.persons.name } : null))
+          .filter(Boolean),
       })) as PostWithRelations[];
 
       setPosts(postsWithRelations);

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { supabase, supabaseAuthStorageKey } from '../lib/supabase';
+import { isSupabaseConfigured, supabase, supabaseAuthStorageKey } from '../lib/supabase';
 import type { Database } from '../lib/database.types';
 
 type UserProfile = Database['public']['Tables']['user_profiles']['Row'];
@@ -19,12 +19,12 @@ const SESSION_TIMEOUT_MS = 3000;
 function readCachedSession(): Session | null {
   if (typeof window === 'undefined') return null;
 
-  const rawSession = window.localStorage.getItem(supabaseAuthStorageKey);
-  if (!rawSession) return null;
-
   try {
+    const rawSession = window.localStorage.getItem(supabaseAuthStorageKey);
+    if (!rawSession) return null;
+
     const session = JSON.parse(rawSession) as Session | null;
-    return session?.user ? session : null;
+    return session?.user?.id ? session : null;
   } catch {
     return null;
   }
@@ -40,12 +40,14 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | nul
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const cachedSession = readCachedSession();
+  const cachedSession = isSupabaseConfigured ? readCachedSession() : null;
   const [user, setUser] = useState<User | null>(cachedSession?.user ?? null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(!cachedSession?.user);
+  const [loading, setLoading] = useState(isSupabaseConfigured && !cachedSession?.user);
 
   async function loadProfile(userId: string) {
+    if (!isSupabaseConfigured) return;
+
     const { data } = await supabase
       .from('user_profiles')
       .select('*')
@@ -56,6 +58,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setUser(null);
+      setProfile(null);
+      setLoading(false);
+      return;
+    }
+
     const cached = readCachedSession();
 
     if (cached?.user) {

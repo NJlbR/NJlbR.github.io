@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { LogIn, UserPlus, Key, ArrowLeft, Mail, RefreshCw, CheckCircle2 } from 'lucide-react';
 import {
   createOtpChallenge,
@@ -74,6 +74,10 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    if (!isSupabaseConfigured) {
+      setError('Подключение к Supabase не настроено. Проверьте переменные окружения проекта.');
+      return;
+    }
     setLoading(true);
 
     try {
@@ -143,6 +147,11 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       setError('Неверный формат email');
+      return;
+    }
+
+    if (!isSupabaseConfigured) {
+      setError('Подключение к Supabase не настроено. Проверьте переменные окружения проекта.');
       return;
     }
 
@@ -335,6 +344,11 @@ export function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+
+    if (!isSupabaseConfigured) {
+      setError('Подключение к Supabase не настроено. Проверьте переменные окружения проекта.');
+      return;
+    }
 
     if (newPassword !== newPasswordConfirm) {
       setError('Новые пароли не совпадают');

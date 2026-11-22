@@ -1,6 +1,6 @@
 import { useEffect, useState, memo, useCallback } from 'react';
 import { Filter, X } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 interface FiltersProps {
   onFilterChange: (filters: FilterState) => void;
@@ -27,6 +27,8 @@ function FiltersContent({ onFilterChange }: FiltersProps) {
   });
 
   useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
     async function fetchFilterOptions() {
       const [hashtagsRes, personsRes] = await Promise.all([
         supabase.from('hashtags').select('name').order('name'),
