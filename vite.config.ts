@@ -11,6 +11,9 @@ export default defineConfig({
     port: 3000,
     allowedHosts: true,
   },
+  optimizeDeps: {
+    exclude: ['lucide-react'],
+  },
   build: {
     rollupOptions: {
       input: {
