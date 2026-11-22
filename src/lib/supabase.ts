@@ -1,8 +1,29 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
 
-const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
-const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+const stripQuotes = (value: string) => value.trim().replace(/^['"]|['"]$/g, '').trim();
+
+const normalizeSupabaseUrl = (rawUrl: string): string => {
+  const cleaned = stripQuotes(rawUrl);
+  if (!cleaned) return '';
+
+  try {
+    const parsed = new URL(cleaned);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      return '';
+    }
+    const cleanPath = parsed.pathname
+      .replace(/\/(rest|auth|storage|functions|realtime)\/v1.*$/i, '')
+      .replace(/\/+$/, '');
+    return `${parsed.origin}${cleanPath}`;
+  } catch {
+    return '';
+  }
+};
+
+const rawSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseUrl = normalizeSupabaseUrl(rawSupabaseUrl);
+const supabaseAnonKey = stripQuotes(import.meta.env.VITE_SUPABASE_ANON_KEY || '');
 
 const isPlaceholderValue = (value: string) =>
   !value ||
@@ -11,19 +32,10 @@ const isPlaceholderValue = (value: string) =>
   value.includes('placeholder.supabase.co') ||
   value.includes('placeholder-anon-key');
 
-const isValidHttpUrl = (value: string) => {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
-  } catch {
-    return false;
-  }
-};
-
 export const isSupabaseConfigured = Boolean(
-  !isPlaceholderValue(supabaseUrl) &&
-    !isPlaceholderValue(supabaseAnonKey) &&
-    isValidHttpUrl(supabaseUrl)
+  supabaseUrl &&
+    !isPlaceholderValue(supabaseUrl) &&
+    !isPlaceholderValue(supabaseAnonKey)
 );
 
 if (!isSupabaseConfigured) {
